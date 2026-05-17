@@ -68,23 +68,23 @@ const SAMPLE_POLL_SLIDE_ID = 'sample-poll-slide'
 const createId = () => crypto.randomUUID()
 
 const starterPresentation = (): Presentation => ({
-  title: 'Poll Slide Studio',
+  title: 'Студия интерактивных слайдов',
   slides: [
     {
       id: 'intro-slide',
-      title: 'Intro',
+      title: 'Вступление',
       transition: 'fade',
     },
     {
       id: SAMPLE_POLL_SLIDE_ID,
-      title: 'Audience poll',
+      title: 'Опрос аудитории',
       transition: 'slide',
       poll: {
-        question: 'Which format keeps an audience most engaged?',
+        question: 'Какой формат лучше удерживает внимание аудитории?',
         options: [
-          { id: 'sample-answer-1', text: 'Short live polls' },
-          { id: 'sample-answer-2', text: 'Open discussion' },
-          { id: 'sample-answer-3', text: 'Visual examples' },
+          { id: 'sample-answer-1', text: 'Короткие живые опросы' },
+          { id: 'sample-answer-2', text: 'Открытое обсуждение' },
+          { id: 'sample-answer-3', text: 'Визуальные примеры' },
         ],
         correctOptionId: 'sample-answer-1',
         questionScale: 100,
@@ -99,10 +99,10 @@ const starterPresentation = (): Presentation => ({
 })
 
 const starterPoll = (): Poll => ({
-  question: 'Your question',
+  question: 'Ваш вопрос',
   options: [
-    { id: createId(), text: 'First answer' },
-    { id: createId(), text: 'Second answer' },
+    { id: createId(), text: 'Первый вариант ответа' },
+    { id: createId(), text: 'Второй вариант ответа' },
   ],
   questionScale: 100,
   optionScale: 100,
@@ -188,7 +188,7 @@ function AdminGate() {
     setError('')
     if (!auth) {
       if (!email || !password || password !== confirm) {
-        setError('Check login and password confirmation.')
+        setError('Проверьте логин и подтверждение пароля.')
         return
       }
       const next = { email, password }
@@ -204,7 +204,7 @@ function AdminGate() {
       setSession(true)
       return
     }
-    setError('Login or password is incorrect.')
+    setError('Неверный логин или пароль.')
   }
 
   if (session && auth) return <AdminView />
@@ -215,36 +215,46 @@ function AdminGate() {
         <div className="brand-mark">
           <QrCode size={30} />
         </div>
-        <h1>Poll Slide Studio</h1>
-        <p>{auth ? 'Sign in to manage the presentation.' : 'Create the only admin account.'}</p>
+        <h1>Студия интерактивных слайдов</h1>
+        <p>{auth ? 'Войдите, чтобы управлять презентацией.' : 'Создайте единственную учетную запись администратора.'}</p>
         <label>
-          Login
-          <input value={email} onChange={(event) => setEmail(event.target.value)} placeholder="email" />
+          Логин
+          <input
+            name="admin-login"
+            autoComplete="username"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            placeholder="электронная почта"
+          />
         </label>
         <label>
-          Password
+          Пароль
           <input
             type="password"
+            name="admin-password"
+            autoComplete={auth ? 'current-password' : 'new-password'}
             value={password}
             onChange={(event) => setPassword(event.target.value)}
-            placeholder="password"
+            placeholder="пароль"
           />
         </label>
         {!auth && (
           <label>
-            Confirm password
+            Подтверждение пароля
             <input
               type="password"
+              name="admin-password-confirm"
+              autoComplete="new-password"
               value={confirm}
               onChange={(event) => setConfirm(event.target.value)}
-              placeholder="password again"
+              placeholder="повторите пароль"
             />
           </label>
         )}
         {error && <p className="form-error">{error}</p>}
         <button className="primary" type="button" onClick={submit}>
           <Lock size={18} />
-          {auth ? 'Sign in' : 'Create account'}
+          {auth ? 'Войти' : 'Создать аккаунт'}
         </button>
       </section>
     </main>
@@ -281,7 +291,7 @@ function AdminView() {
   const addSlide = (withPoll = false) => {
     const slide: Slide = {
       id: createId(),
-      title: withPoll ? 'Poll slide' : 'Image slide',
+      title: withPoll ? 'Слайд с опросом' : 'Слайд с изображением',
       transition: 'fade',
       poll: withPoll ? starterPoll() : undefined,
     }
@@ -343,17 +353,17 @@ function AdminView() {
         <div className="app-title">
           <QrCode />
           <div>
-            <strong>Poll Slide Studio</strong>
+            <strong>Студия интерактивных слайдов</strong>
             <span>1920 x 1080</span>
           </div>
         </div>
         <button className="primary" type="button" onClick={() => addSlide(false)}>
           <Plus size={17} />
-          Add image slide
+          Добавить слайд с изображением
         </button>
         <button className="secondary" type="button" onClick={() => addSlide(true)}>
           <BarChart3 size={17} />
-          Add poll slide
+          Добавить слайд с опросом
         </button>
         <div className="slides">
           {presentation.slides.map((slide, index) => (
@@ -364,8 +374,8 @@ function AdminView() {
               onClick={() => setSelectedId(slide.id)}
             >
               <span>{index + 1}</span>
-              <strong>{slide.title || 'Untitled slide'}</strong>
-              <small>{slide.poll ? 'Poll' : 'Image'}</small>
+              <strong>{slide.title || 'Без названия'}</strong>
+              <small>{slide.poll ? 'Опрос' : 'Изображение'}</small>
             </button>
           ))}
         </div>
@@ -375,11 +385,13 @@ function AdminView() {
         <header className="toolbar">
           <input
             className="title-input"
+            name="presentation-title"
+            autoComplete="off"
             value={presentation.title}
             onChange={(event) => setPresentation({ ...presentation, title: event.target.value })}
           />
           <div className="toolbar-actions">
-            <button type="button" onClick={undo} disabled={!canUndo} title="Undo">
+            <button type="button" onClick={undo} disabled={!canUndo} title="Отменить">
               <RotateCcw size={18} />
             </button>
             <button
@@ -387,22 +399,22 @@ function AdminView() {
               type="button"
               onClick={() => savePresentation(presentation)}
               disabled={!isDirty}
-              title="Save"
+              title="Сохранить"
             >
               <Save size={18} />
             </button>
-            <button type="button" onClick={() => resetVotes()} title="Reset all votes">
+            <button type="button" onClick={() => resetVotes()} title="Обнулить все ответы">
               <Trash2 size={18} />
             </button>
-            <button type="button" onClick={exportPresentation} title="Export">
+            <button type="button" onClick={exportPresentation} title="Экспорт">
               <Download size={18} />
             </button>
-            <button type="button" onClick={() => importInput.current?.click()} title="Import">
+            <button type="button" onClick={() => importInput.current?.click()} title="Импорт">
               <Upload size={18} />
             </button>
             <a className="button-link" href="#present">
               <Eye size={18} />
-              Present
+              Показ
             </a>
           </div>
           <input
@@ -421,29 +433,31 @@ function AdminView() {
             </section>
             <aside className="properties">
               <label>
-                Slide title
+                Название слайда
                 <input
                   value={selected.title}
+                  name="slide-title"
+                  autoComplete="off"
                   onChange={(event) => updateSlide(selected.id, (slide) => ({ ...slide, title: event.target.value }))}
                 />
               </label>
               <label>
-                Transition
+                Переход
                 <select
                   value={selected.transition}
                   onChange={(event) =>
                     updateSlide(selected.id, (slide) => ({ ...slide, transition: event.target.value as Transition }))
                   }
                 >
-                  <option value="fade">Fade</option>
-                  <option value="slide">Slide</option>
-                  <option value="zoom">Zoom</option>
-                  <option value="none">None</option>
+                  <option value="fade">Плавное появление</option>
+                  <option value="slide">Сдвиг</option>
+                  <option value="zoom">Приближение</option>
+                  <option value="none">Без эффекта</option>
                 </select>
               </label>
               <button type="button" onClick={() => fileInput.current?.click()}>
                 <ImagePlus size={18} />
-                Upload 1920x1080 image
+                Загрузить изображение 1920x1080
               </button>
               <input hidden ref={fileInput} type="file" accept="image/*" onChange={(event) => onImage(event.target.files?.[0])} />
               <button
@@ -453,11 +467,11 @@ function AdminView() {
                 }
               >
                 <BarChart3 size={18} />
-                {selected.poll ? 'Remove poll' : 'Add poll'}
+                {selected.poll ? 'Удалить опрос' : 'Добавить опрос'}
               </button>
               <button type="button" onClick={() => deleteSlide(selected.id)} disabled={presentation.slides.length < 2}>
                 <Trash2 size={18} />
-                Delete slide
+                Удалить слайд
               </button>
               {selected.poll && (
                 <PollBuilder poll={selected.poll} onChange={updatePoll} onReset={() => resetVotes(selected.id)} />
@@ -477,7 +491,7 @@ function PollBuilder({ poll, onChange, onReset }: { poll: Poll; onChange: (poll:
 
   const addOption = () => {
     if (poll.options.length >= 10) return
-    onChange({ ...poll, options: [...poll.options, { id: createId(), text: `Answer ${poll.options.length + 1}` }] })
+    onChange({ ...poll, options: [...poll.options, { id: createId(), text: `Вариант ответа ${poll.options.length + 1}` }] })
   }
 
   const removeOption = (id: string) => {
@@ -492,18 +506,18 @@ function PollBuilder({ poll, onChange, onReset }: { poll: Poll; onChange: (poll:
   return (
     <div className="poll-builder">
       <div className="panel-title">
-        <strong>Poll builder</strong>
-        <button type="button" onClick={onReset} title="Reset this poll votes">
+        <strong>Конструктор опроса</strong>
+        <button type="button" onClick={onReset} title="Обнулить ответы этого опроса">
           <RotateCcw size={16} />
         </button>
       </div>
       <label>
-        Question
+        Вопрос
         <textarea value={poll.question} onChange={(event) => onChange({ ...poll, question: event.target.value })} />
       </label>
       <div className="range-grid">
         <label>
-          Question size
+          Размер вопроса
           <input
             type="range"
             min="70"
@@ -513,7 +527,7 @@ function PollBuilder({ poll, onChange, onReset }: { poll: Poll; onChange: (poll:
           />
         </label>
         <label>
-          Answer size
+          Размер ответов
           <input
             type="range"
             min="70"
@@ -523,19 +537,19 @@ function PollBuilder({ poll, onChange, onReset }: { poll: Poll; onChange: (poll:
           />
         </label>
         <label>
-          Question X
+          Вопрос по X
           <input type="range" min="0" max="55" value={poll.questionX} onChange={(event) => onChange({ ...poll, questionX: Number(event.target.value) })} />
         </label>
         <label>
-          Question Y
+          Вопрос по Y
           <input type="range" min="0" max="70" value={poll.questionY} onChange={(event) => onChange({ ...poll, questionY: Number(event.target.value) })} />
         </label>
         <label>
-          Answers X
+          Ответы по X
           <input type="range" min="0" max="55" value={poll.optionsX} onChange={(event) => onChange({ ...poll, optionsX: Number(event.target.value) })} />
         </label>
         <label>
-          Answers Y
+          Ответы по Y
           <input type="range" min="15" max="80" value={poll.optionsY} onChange={(event) => onChange({ ...poll, optionsY: Number(event.target.value) })} />
         </label>
       </div>
@@ -546,12 +560,12 @@ function PollBuilder({ poll, onChange, onReset }: { poll: Poll; onChange: (poll:
               type="button"
               className={poll.correctOptionId === option.id ? 'icon-on' : ''}
               onClick={() => onChange({ ...poll, correctOptionId: poll.correctOptionId === option.id ? undefined : option.id })}
-              title="Correct answer"
+              title="Правильный ответ"
             >
               {poll.correctOptionId === option.id ? <Check size={16} /> : <Circle size={16} />}
             </button>
             <input value={option.text} onChange={(event) => updateOption(option.id, event.target.value)} />
-            <button type="button" onClick={() => removeOption(option.id)} title="Remove answer">
+            <button type="button" onClick={() => removeOption(option.id)} title="Удалить ответ">
               <Trash2 size={16} />
             </button>
           </div>
@@ -559,7 +573,7 @@ function PollBuilder({ poll, onChange, onReset }: { poll: Poll; onChange: (poll:
       </div>
       <button type="button" onClick={addOption} disabled={poll.options.length >= 10}>
         <Plus size={16} />
-        Add answer
+        Добавить ответ
       </button>
     </div>
   )
@@ -743,7 +757,7 @@ function ParticipantView({ slideId }: { slideId: string }) {
     return (
       <main className="participant-screen">
         <section className="participant-panel">
-          <h1>Poll is unavailable</h1>
+          <h1>Опрос недоступен</h1>
         </section>
       </main>
     )
@@ -767,13 +781,13 @@ function ParticipantView({ slideId }: { slideId: string }) {
           </>
         ) : selected ? (
           <>
-            <h1>Thank you!</h1>
-            {correct && <p>Correct answer: {correct}</p>}
+            <h1>Спасибо!</h1>
+            {correct && <p>Правильный ответ: {correct}</p>}
           </>
         ) : (
           <>
-            <h1>Voting is closed</h1>
-            <p>The speaker has not opened this poll yet or has already shown the results.</p>
+            <h1>Голосование закрыто</h1>
+            <p>Спикер еще не открыл этот опрос или уже показал результаты.</p>
           </>
         )}
       </section>
