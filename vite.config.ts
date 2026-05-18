@@ -3,6 +3,9 @@ import react from '@vitejs/plugin-react'
 
 // https://vite.dev/config/
 export default defineConfig({
-  base: '/poll-slide-studio/',
+  base: './',
+  build: {
+    outDir: 'docs',
+  },
   plugins: [react()],
 })
