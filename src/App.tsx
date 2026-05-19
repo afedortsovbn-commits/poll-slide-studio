@@ -3,11 +3,11 @@ import { QRCodeSVG } from 'qrcode.react'
 import {
   ArrowLeft,
   ArrowRight,
-  BarChart3,
   Check,
   Circle,
   Download,
   Eye,
+  GripVertical,
   ImagePlus,
   Lock,
   Plus,
@@ -16,6 +16,7 @@ import {
   Save,
   Trash2,
   Upload,
+  UserPlus,
 } from 'lucide-react'
 import {
   firebaseEnabled,
@@ -68,7 +69,14 @@ type AuthState = {
   password: string
 }
 
+type AuthStore = {
+  users: AuthState[]
+}
+
+type PollNumberField = keyof Pick<Poll, 'questionScale' | 'optionScale' | 'questionX' | 'questionY' | 'optionsX' | 'optionsY'>
+
 const AUTH_KEY = 'poll-slide-studio.auth'
+const AUTH_USERS_KEY = 'poll-slide-studio.auth-users'
 const SESSION_KEY = 'poll-slide-studio.session'
 const PRESENTATION_KEY = 'poll-slide-studio.presentation'
 const VOTES_KEY = 'poll-slide-studio.votes'
@@ -136,6 +144,17 @@ const writeJson = (key: string, value: unknown) => {
   window.dispatchEvent(new Event('poll-slide-studio-storage'))
 }
 
+const readAuthStore = (): AuthStore => {
+  const stored = readJson<AuthStore>(AUTH_USERS_KEY, { users: [] })
+  if (stored.users.length) return stored
+  const legacy = readJson<AuthState | null>(AUTH_KEY, null)
+  return legacy ? { users: [legacy] } : { users: [] }
+}
+
+const writeAuthStore = (store: AuthStore) => {
+  writeJson(AUTH_USERS_KEY, store)
+}
+
 const useStoredPresentation = () => {
   const [presentation, setPresentationState] = useState<Presentation>(() =>
     readJson(PRESENTATION_KEY, starterPresentation()),
@@ -177,6 +196,51 @@ const getPollUrl = (slideId: string) => {
   return url.toString()
 }
 
+const moveItem = <T,>(items: T[], from: number, to: number) => {
+  if (from === to || from < 0 || to < 0 || from >= items.length || to >= items.length) return items
+  const next = [...items]
+  const [item] = next.splice(from, 1)
+  next.splice(to, 0, item)
+  return next
+}
+
+const fitPollOptions = (poll: Poll): Poll => {
+  const rows = Math.max(poll.options.length, 1)
+  const optionScale = Math.min(poll.optionScale, Math.max(45, Math.floor(118 - rows * 5)))
+  const optionsY = Math.min(poll.optionsY, rows > 7 ? 30 : poll.optionsY)
+  return { ...poll, optionScale, optionsY }
+}
+
+const createSlide = (): Slide => ({
+  id: createId(),
+  title: 'Новый слайд',
+  transition: 'fade',
+})
+
+function NumericControl({
+  label,
+  value,
+  min,
+  max,
+  onChange,
+}: {
+  label: string
+  value: number
+  min: number
+  max: number
+  onChange: (value: number) => void
+}) {
+  return (
+    <label className="numeric-control">
+      {label}
+      <div>
+        <input type="range" min={min} max={max} value={value} onChange={(event) => onChange(Number(event.target.value))} />
+        <input type="number" min={min} max={max} value={value} onChange={(event) => onChange(Number(event.target.value))} />
+      </div>
+    </label>
+  )
+}
+
 function App() {
   const hash = window.location.hash.replace(/^#\/?/, '')
   const [route, setRoute] = useState(hash || 'admin')
@@ -199,29 +263,36 @@ function App() {
 }
 
 function AdminGate() {
-  const [auth, setAuth] = useState<AuthState | null>(() => readJson(AUTH_KEY, null))
+  const [authStore, setAuthStore] = useState<AuthStore>(() => readAuthStore())
   const [session, setSession] = useState(() => localStorage.getItem(SESSION_KEY) === '1')
+  const [mode, setMode] = useState<'login' | 'register'>(() => (readAuthStore().users.length ? 'login' : 'register'))
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
   const [error, setError] = useState('')
+  const hasUsers = authStore.users.length > 0
 
   const submit = () => {
     setError('')
-    if (!auth) {
+    if (mode === 'register') {
       if (!email || !password || password !== confirm) {
         setError('Проверьте логин и подтверждение пароля.')
         return
       }
+      if (authStore.users.some((user) => user.email === email)) {
+        setError('Пользователь с таким логином уже существует.')
+        return
+      }
       const next = { email, password }
-      writeJson(AUTH_KEY, next)
+      const nextStore = { users: [...authStore.users, next] }
+      writeAuthStore(nextStore)
       localStorage.setItem(SESSION_KEY, '1')
-      setAuth(next)
+      setAuthStore(nextStore)
       setSession(true)
       return
     }
 
-    if (email === auth.email && password === auth.password) {
+    if (authStore.users.some((user) => user.email === email && user.password === password)) {
       localStorage.setItem(SESSION_KEY, '1')
       setSession(true)
       return
@@ -229,7 +300,7 @@ function AdminGate() {
     setError('Неверный логин или пароль.')
   }
 
-  if (session && auth) return <AdminView />
+  if (session && hasUsers) return <AdminView />
 
   return (
     <main className="auth-screen">
@@ -238,7 +309,17 @@ function AdminGate() {
           <QrCode size={30} />
         </div>
         <h1>Студия интерактивных слайдов</h1>
-        <p>{auth ? 'Войдите, чтобы управлять презентацией.' : 'Создайте единственную учетную запись администратора.'}</p>
+        <p>{mode === 'login' ? 'Войдите, чтобы управлять презентацией.' : 'Создайте нового пользователя админки.'}</p>
+        <div className="auth-tabs">
+          <button className={mode === 'login' ? 'active' : ''} type="button" onClick={() => setMode('login')} disabled={!hasUsers}>
+            <Lock size={16} />
+            Вход
+          </button>
+          <button className={mode === 'register' ? 'active' : ''} type="button" onClick={() => setMode('register')}>
+            <UserPlus size={16} />
+            Новый пользователь
+          </button>
+        </div>
         <label>
           Логин
           <input
@@ -254,13 +335,13 @@ function AdminGate() {
           <input
             type="password"
             name="admin-password"
-            autoComplete={auth ? 'current-password' : 'new-password'}
+            autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
             value={password}
             onChange={(event) => setPassword(event.target.value)}
             placeholder="пароль"
           />
         </label>
-        {!auth && (
+        {mode === 'register' && (
           <label>
             Подтверждение пароля
             <input
@@ -276,7 +357,7 @@ function AdminGate() {
         {error && <p className="form-error">{error}</p>}
         <button className="primary" type="button" onClick={submit}>
           <Lock size={18} />
-          {auth ? 'Войти' : 'Создать аккаунт'}
+          {mode === 'login' ? 'Войти' : 'Создать пользователя'}
         </button>
       </section>
     </main>
@@ -293,6 +374,7 @@ function AdminView() {
   const [presentation, setPresentation] = useState(savedPresentation)
   const [presentationBase, setPresentationBase] = useState(savedPresentation)
   const [selectedId, setSelectedId] = useState(presentation.slides[0]?.id)
+  const [draggedSlideId, setDraggedSlideId] = useState<string | null>(null)
   const selected = presentation.slides.find((slide) => slide.id === selectedId) ?? presentation.slides[0]
   const fileInput = useRef<HTMLInputElement>(null)
   const importInput = useRef<HTMLInputElement>(null)
@@ -310,13 +392,8 @@ function AdminView() {
     })
   }
 
-  const addSlide = (withPoll = false) => {
-    const slide: Slide = {
-      id: createId(),
-      title: withPoll ? 'Слайд с опросом' : 'Слайд с изображением',
-      transition: 'fade',
-      poll: withPoll ? starterPoll() : undefined,
-    }
+  const addSlide = () => {
+    const slide = createSlide()
     setPresentation({ ...presentation, slides: [...presentation.slides, slide] })
     setSelectedId(slide.id)
   }
@@ -340,6 +417,18 @@ function AdminView() {
   const updatePoll = (next: Poll) => {
     if (!selected) return
     updateSlide(selected.id, (slide) => ({ ...slide, poll: next }))
+  }
+
+  const togglePoll = (enabled: boolean) => {
+    if (!selected) return
+    updateSlide(selected.id, (slide) => ({ ...slide, poll: enabled ? fitPollOptions(slide.poll ?? starterPoll()) : undefined }))
+  }
+
+  const reorderSlide = (targetId: string) => {
+    if (!draggedSlideId || draggedSlideId === targetId) return
+    const from = presentation.slides.findIndex((slide) => slide.id === draggedSlideId)
+    const to = presentation.slides.findIndex((slide) => slide.id === targetId)
+    setPresentation({ ...presentation, slides: moveItem(presentation.slides, from, to) })
   }
 
   const resetVotes = (slideId?: string) => {
@@ -380,13 +469,9 @@ function AdminView() {
             <span>1920 x 1080</span>
           </div>
         </div>
-        <button className="primary" type="button" onClick={() => addSlide(false)}>
+        <button className="primary" type="button" onClick={addSlide}>
           <Plus size={17} />
-          Добавить слайд с изображением
-        </button>
-        <button className="secondary" type="button" onClick={() => addSlide(true)}>
-          <BarChart3 size={17} />
-          Добавить слайд с опросом
+          Добавить слайд
         </button>
         <div className="slides">
           {presentation.slides.map((slide, index) => (
@@ -394,11 +479,17 @@ function AdminView() {
               className={slide.id === selected?.id ? 'thumb active' : 'thumb'}
               key={slide.id}
               type="button"
+              draggable
+              onDragStart={() => setDraggedSlideId(slide.id)}
+              onDragOver={(event) => event.preventDefault()}
+              onDrop={() => reorderSlide(slide.id)}
+              onDragEnd={() => setDraggedSlideId(null)}
               onClick={() => setSelectedId(slide.id)}
             >
+              <GripVertical className="drag-marker" size={16} />
               <span>{index + 1}</span>
               <strong>{slide.title || 'Без названия'}</strong>
-              <small>{slide.poll ? 'Опрос' : 'Изображение'}</small>
+              <small>{slide.poll ? 'Опрос включен' : 'Без опроса'}</small>
             </button>
           ))}
         </div>
@@ -480,18 +571,19 @@ function AdminView() {
               </label>
               <button type="button" onClick={() => fileInput.current?.click()}>
                 <ImagePlus size={18} />
-                Загрузить изображение 1920x1080
+                Добавить изображение 1920x1080
               </button>
               <input hidden ref={fileInput} type="file" accept="image/*" onChange={(event) => onImage(event.target.files?.[0])} />
-              <button
-                type="button"
-                onClick={() =>
-                  updateSlide(selected.id, (slide) => ({ ...slide, poll: slide.poll ? undefined : starterPoll() }))
-                }
-              >
-                <BarChart3 size={18} />
-                {selected.poll ? 'Удалить опрос' : 'Добавить опрос'}
-              </button>
+              {selected.image && (
+                <button type="button" onClick={() => updateSlide(selected.id, (slide) => ({ ...slide, image: undefined }))}>
+                  <Trash2 size={18} />
+                  Удалить изображение
+                </button>
+              )}
+              <label className="checkbox-row">
+                <input type="checkbox" checked={Boolean(selected.poll)} onChange={(event) => togglePoll(event.target.checked)} />
+                Опрос
+              </label>
               <button type="button" onClick={() => deleteSlide(selected.id)} disabled={presentation.slides.length < 2}>
                 <Trash2 size={18} />
                 Удалить слайд
@@ -508,13 +600,19 @@ function AdminView() {
 }
 
 function PollBuilder({ poll, onChange, onReset }: { poll: Poll; onChange: (poll: Poll) => void; onReset: () => void }) {
+  const [draggedOptionId, setDraggedOptionId] = useState<string | null>(null)
+
+  const updateNumber = (field: PollNumberField, value: number) => {
+    onChange({ ...poll, [field]: value })
+  }
+
   const updateOption = (id: string, text: string) => {
     onChange({ ...poll, options: poll.options.map((option) => (option.id === id ? { ...option, text } : option)) })
   }
 
   const addOption = () => {
     if (poll.options.length >= 10) return
-    onChange({ ...poll, options: [...poll.options, { id: createId(), text: `Вариант ответа ${poll.options.length + 1}` }] })
+    onChange(fitPollOptions({ ...poll, options: [...poll.options, { id: createId(), text: `Вариант ответа ${poll.options.length + 1}` }] }))
   }
 
   const removeOption = (id: string) => {
@@ -524,6 +622,13 @@ function PollBuilder({ poll, onChange, onReset }: { poll: Poll; onChange: (poll:
       options: poll.options.filter((option) => option.id !== id),
       correctOptionId: poll.correctOptionId === id ? undefined : poll.correctOptionId,
     })
+  }
+
+  const reorderOption = (targetId: string) => {
+    if (!draggedOptionId || draggedOptionId === targetId) return
+    const from = poll.options.findIndex((option) => option.id === draggedOptionId)
+    const to = poll.options.findIndex((option) => option.id === targetId)
+    onChange({ ...poll, options: moveItem(poll.options, from, to) })
   }
 
   return (
@@ -539,46 +644,31 @@ function PollBuilder({ poll, onChange, onReset }: { poll: Poll; onChange: (poll:
         <textarea value={poll.question} onChange={(event) => onChange({ ...poll, question: event.target.value })} />
       </label>
       <div className="range-grid">
-        <label>
-          Размер вопроса
-          <input
-            type="range"
-            min="70"
-            max="150"
-            value={poll.questionScale}
-            onChange={(event) => onChange({ ...poll, questionScale: Number(event.target.value) })}
-          />
-        </label>
-        <label>
-          Размер ответов
-          <input
-            type="range"
-            min="70"
-            max="150"
-            value={poll.optionScale}
-            onChange={(event) => onChange({ ...poll, optionScale: Number(event.target.value) })}
-          />
-        </label>
-        <label>
-          Вопрос по X
-          <input type="range" min="0" max="55" value={poll.questionX} onChange={(event) => onChange({ ...poll, questionX: Number(event.target.value) })} />
-        </label>
-        <label>
-          Вопрос по Y
-          <input type="range" min="0" max="70" value={poll.questionY} onChange={(event) => onChange({ ...poll, questionY: Number(event.target.value) })} />
-        </label>
-        <label>
-          Ответы по X
-          <input type="range" min="0" max="55" value={poll.optionsX} onChange={(event) => onChange({ ...poll, optionsX: Number(event.target.value) })} />
-        </label>
-        <label>
-          Ответы по Y
-          <input type="range" min="15" max="80" value={poll.optionsY} onChange={(event) => onChange({ ...poll, optionsY: Number(event.target.value) })} />
-        </label>
+        <fieldset>
+          <legend>Вопрос</legend>
+          <NumericControl label="Размер" value={poll.questionScale} min={55} max={160} onChange={(value) => updateNumber('questionScale', value)} />
+          <NumericControl label="Смещение X" value={poll.questionX} min={0} max={70} onChange={(value) => updateNumber('questionX', value)} />
+          <NumericControl label="Смещение Y" value={poll.questionY} min={0} max={75} onChange={(value) => updateNumber('questionY', value)} />
+        </fieldset>
+        <fieldset>
+          <legend>Ответы</legend>
+          <NumericControl label="Размер" value={poll.optionScale} min={35} max={160} onChange={(value) => updateNumber('optionScale', value)} />
+          <NumericControl label="Смещение X" value={poll.optionsX} min={0} max={70} onChange={(value) => updateNumber('optionsX', value)} />
+          <NumericControl label="Смещение Y" value={poll.optionsY} min={12} max={82} onChange={(value) => updateNumber('optionsY', value)} />
+        </fieldset>
       </div>
       <div className="option-list">
         {poll.options.map((option) => (
-          <div className="option-edit" key={option.id}>
+          <div
+            className="option-edit"
+            key={option.id}
+            draggable
+            onDragStart={() => setDraggedOptionId(option.id)}
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={() => reorderOption(option.id)}
+            onDragEnd={() => setDraggedOptionId(null)}
+          >
+            <GripVertical className="drag-marker" size={16} />
             <button
               type="button"
               className={poll.correctOptionId === option.id ? 'icon-on' : ''}
@@ -636,6 +726,11 @@ function SpeakerView() {
       unsubscribeVotes()
     }
   }, [])
+
+  useEffect(() => {
+    if (!firebaseEnabled) return
+    void saveRemotePresentation(presentation)
+  }, [presentation])
 
   useEffect(() => {
     const openPolls = readJson<Record<string, boolean>>(OPEN_POLLS_KEY, {})
@@ -709,11 +804,6 @@ function SlideCanvas({ slide, mode, votes }: { slide: Slide; mode: 'edit' | 'pre
   return (
     <div className={`slide-canvas transition-${slide.transition}`}>
       {slide.image ? <img className="slide-bg" src={slide.image} alt="" /> : <div className="slide-bg placeholder-bg" />}
-      {!slide.poll && (
-        <div className="slide-empty">
-          <strong>{slide.title}</strong>
-        </div>
-      )}
       {slide.poll && (
         <>
           <div
@@ -752,7 +842,7 @@ function SlideCanvas({ slide, mode, votes }: { slide: Slide; mode: 'edit' | 'pre
           </div>
           {mode !== 'results' && (
             <div className="qr-box">
-              <QRCodeSVG value={getPollUrl(slide.id)} size={128} />
+              <QRCodeSVG value={getPollUrl(slide.id)} size={168} />
             </div>
           )}
         </>
