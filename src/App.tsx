@@ -27,6 +27,7 @@ import {
   subscribeRemoteOpenPolls,
   subscribeRemotePresentation,
   subscribeRemoteVotes,
+  type RemoteOpenPolls,
 } from './realtime'
 import './App.css'
 
@@ -507,8 +508,8 @@ function AdminView() {
             >
               <Save size={18} />
             </button>
-            <button type="button" onClick={() => resetVotes()} title="Обнулить все ответы">
-              <Trash2 size={18} />
+            <button className="reset-action" type="button" onClick={() => resetVotes()} title="Обнулить все ответы">
+              <RotateCcw size={18} />
             </button>
             <button type="button" onClick={exportPresentation} title="Экспорт">
               <Upload size={18} />
@@ -625,7 +626,7 @@ function PollBuilder({ poll, onChange, onReset }: { poll: Poll; onChange: (poll:
     <div className="poll-builder">
       <div className="panel-title">
         <strong>Конструктор опроса</strong>
-        <button type="button" onClick={onReset} title="Обнулить ответы этого опроса">
+        <button className="reset-action" type="button" onClick={onReset} title="Обнулить ответы этого опроса">
           <RotateCcw size={16} />
         </button>
       </div>
@@ -721,14 +722,20 @@ function SpeakerView() {
 
   useEffect(() => {
     if (!remotePresentationReady) return
-    const openPolls: Record<string, boolean> = {}
+    const openPolls: RemoteOpenPolls = {}
     presentation.slides.forEach((item) => {
       if (item.poll) openPolls[item.id] = false
     })
-    if (slide?.poll && !showResults) openPolls[slide.id] = true
+    if (slide?.poll) {
+      openPolls[slide.id] = {
+        isOpen: !showResults,
+        title: slide.title,
+        poll: slide.poll,
+      }
+    }
     writeJson(OPEN_POLLS_KEY, openPolls)
     void saveRemoteOpenPolls(openPolls)
-  }, [presentation.slides, remotePresentationReady, slide?.id, slide?.poll, showResults])
+  }, [presentation.slides, remotePresentationReady, slide?.id, slide?.poll, slide?.title, showResults])
 
   const next = () => {
     if (slide?.poll && !showResults) {
@@ -841,13 +848,19 @@ function SlideCanvas({ slide, mode, votes }: { slide: Slide; mode: 'edit' | 'pre
 
 function ParticipantView({ slideId }: { slideId: string }) {
   const [presentation, setPresentation] = useState(() => readJson(PRESENTATION_KEY, starterPresentation()))
-  const [openPolls, setOpenPolls] = useState(() => readJson<Record<string, boolean>>(OPEN_POLLS_KEY, {}))
+  const [openPolls, setOpenPolls] = useState(() => readJson<RemoteOpenPolls>(OPEN_POLLS_KEY, {}))
   const [remotePresentationReady, setRemotePresentationReady] = useState(!firebaseEnabled)
   const [remoteOpenPollsReady, setRemoteOpenPollsReady] = useState(!firebaseEnabled)
   const [selected, setSelected] = useState<string | null>(() => localStorage.getItem(`poll-slide-studio.answer.${slideId}`))
   const slide = presentation.slides.find((item) => item.id === slideId)
-  const poll = slide?.poll
-  const isOpen = Boolean(openPolls[slideId])
+  const openPoll = openPolls[slideId]
+  const openPollPayload = openPoll && typeof openPoll === 'object' ? openPoll : null
+  const openPollSlidePoll = openPollPayload?.poll as Poll | undefined
+  const poll = slide?.poll ?? openPollSlidePoll
+  const isOpen = Boolean(
+    openPoll === true ||
+      (openPollPayload && openPollPayload.isOpen),
+  )
 
   useEffect(() => {
     const sync = () => {

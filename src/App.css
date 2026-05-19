@@ -149,9 +149,10 @@ label {
 }
 
 .admin-shell {
-  min-height: 100vh;
+  height: 100vh;
   display: grid;
   grid-template-columns: 280px 1fr;
+  overflow: hidden;
 }
 
 .slide-list {
@@ -161,6 +162,8 @@ label {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .app-title {
@@ -243,8 +246,10 @@ label {
 
 .editor {
   min-width: 0;
+  min-height: 0;
   display: grid;
   grid-template-rows: 64px 1fr;
+  overflow: hidden;
 }
 
 .toolbar {
@@ -269,28 +274,45 @@ label {
 
 .workbench {
   min-height: 0;
+  height: calc(100vh - 64px);
   display: grid;
   grid-template-columns: minmax(560px, 1fr) 360px;
   gap: 18px;
   padding: 18px;
+  overflow: hidden;
 }
 
 .canvas-wrap {
   min-width: 0;
+  min-height: 0;
   display: grid;
   justify-items: center;
   align-items: start;
+  overflow: hidden;
 }
 
 .properties {
   display: flex;
   flex-direction: column;
   gap: 13px;
+  min-height: 0;
   overflow: auto;
   background: #f9fbf9;
   border: 1px solid #d5ddd8;
   border-radius: 8px;
   padding: 16px;
+}
+
+.reset-action {
+  color: #245245;
+  background: #eef5f0;
+  border-color: #b8c9bf;
+}
+
+.reset-action:hover:not(:disabled) {
+  color: #123e34;
+  background: #e2efe7;
+  border-color: #6d9b83;
 }
 
 .slide-canvas {

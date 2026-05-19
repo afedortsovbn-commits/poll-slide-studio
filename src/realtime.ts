@@ -19,7 +19,12 @@ type RemotePresentation = {
 }
 
 export type RemoteVoteStore = Record<string, Record<string, number>>
-export type RemoteOpenPolls = Record<string, boolean>
+export type RemoteOpenPoll = boolean | {
+  isOpen: boolean
+  title: string
+  poll: unknown
+}
+export type RemoteOpenPolls = Record<string, RemoteOpenPoll>
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
