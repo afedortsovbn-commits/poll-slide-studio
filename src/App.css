@@ -278,7 +278,8 @@ label {
 .canvas-wrap {
   min-width: 0;
   display: grid;
-  place-items: center;
+  justify-items: center;
+  align-items: start;
 }
 
 .properties {
@@ -447,18 +448,21 @@ label {
 .presenter-controls {
   position: fixed;
   right: 18px;
-  top: 18px;
+  bottom: 18px;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 7px;
   color: #ffffff;
   background: rgba(0, 0, 0, 0.44);
   border-radius: 8px;
-  padding: 8px;
+  padding: 6px;
+  font-size: 14px;
 }
 
 .presenter-controls button {
-  width: 42px;
+  width: 34px;
+  min-height: 34px;
+  padding: 6px;
   color: #ffffff;
   background: rgba(255, 255, 255, 0.12);
   border-color: rgba(255, 255, 255, 0.25);

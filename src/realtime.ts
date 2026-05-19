@@ -1,12 +1,13 @@
 import { initializeApp, type FirebaseApp } from 'firebase/app'
 import {
+  collection,
   deleteDoc,
   doc,
+  FieldPath,
   getDocs,
-  getFirestore,
   increment,
+  initializeFirestore,
   onSnapshot,
-  collection,
   setDoc,
   updateDoc,
   type Firestore,
@@ -43,7 +44,9 @@ const getDb = () => {
   if (!firebaseEnabled) return null
   if (!app) {
     app = initializeApp(firebaseConfig)
-    db = getFirestore(app)
+    db = initializeFirestore(app, {
+      experimentalForceLongPolling: true,
+    })
   }
   return db
 }
@@ -53,37 +56,56 @@ const stateDoc = (name: string) => {
   return firestore ? doc(firestore, 'pollSlideStudio', name) : null
 }
 
-export const saveRemotePresentation = async (presentation: RemotePresentation) => {
-  const target = stateDoc('presentation')
+const saveRemoteJson = async (name: string, value: unknown) => {
+  const target = stateDoc(name)
   if (!target) return
-  await setDoc(target, { value: presentation, updatedAt: Date.now() })
+  await setDoc(target, { json: JSON.stringify(value), updatedAt: Date.now() })
 }
 
-export const subscribeRemotePresentation = (onChange: (presentation: RemotePresentation | null) => void) => {
-  const target = stateDoc('presentation')
+const subscribeRemoteJson = <T,>(name: string, fallback: T, onChange: (value: T) => void) => {
+  if (!firebaseEnabled) return () => undefined
+  let previous = ''
+  const target = stateDoc(name)
   if (!target) return () => undefined
   return onSnapshot(target, (snapshot) => {
-    const value = snapshot.data()?.value
-    onChange(value && typeof value === 'object' ? (value as RemotePresentation) : null)
+    try {
+      const data = snapshot.data()
+      const json = data?.json
+      const storedValue =
+        typeof json === 'string'
+          ? (JSON.parse(json) as T)
+          : data?.value && typeof data.value === 'object'
+            ? (data.value as T)
+            : fallback
+      const value = snapshot.exists() ? storedValue : fallback
+      const next = JSON.stringify(value)
+      if (next !== previous) {
+        previous = next
+        onChange(value)
+      }
+    } catch {
+      if (!previous) onChange(fallback)
+    }
   })
 }
+
+export const saveRemotePresentation = async (presentation: RemotePresentation) => {
+  await saveRemoteJson('presentation', presentation)
+}
+
+export const subscribeRemotePresentation = (onChange: (presentation: RemotePresentation | null) => void) =>
+  subscribeRemoteJson<RemotePresentation | null>('presentation', null, onChange)
 
 export const saveRemoteOpenPolls = async (openPolls: RemoteOpenPolls) => {
-  const target = stateDoc('openPolls')
-  if (!target) return
-  await setDoc(target, { value: openPolls, updatedAt: Date.now() })
+  await saveRemoteJson('openPolls', openPolls)
 }
 
-export const subscribeRemoteOpenPolls = (onChange: (openPolls: RemoteOpenPolls) => void) => {
-  const target = stateDoc('openPolls')
-  if (!target) return () => undefined
-  return onSnapshot(target, (snapshot) => {
-    const value = snapshot.data()?.value
-    onChange(value && typeof value === 'object' ? (value as RemoteOpenPolls) : {})
-  })
-}
+export const subscribeRemoteOpenPolls = (onChange: (openPolls: RemoteOpenPolls) => void) =>
+  subscribeRemoteJson<RemoteOpenPolls>('openPolls', {}, onChange)
 
 export const subscribeRemoteVotes = (onChange: (votes: RemoteVoteStore) => void) => {
+  if (!firebaseEnabled) return () => undefined
+  let previous = ''
   const firestore = getDb()
   if (!firestore) return () => undefined
   return onSnapshot(collection(firestore, 'pollSlideStudioVotes'), (snapshot) => {
@@ -92,7 +114,11 @@ export const subscribeRemoteVotes = (onChange: (votes: RemoteVoteStore) => void)
       const counts = item.data().counts
       votes[item.id] = counts && typeof counts === 'object' ? (counts as Record<string, number>) : {}
     })
-    onChange(votes)
+    const next = JSON.stringify(votes)
+    if (next !== previous) {
+      previous = next
+      onChange(votes)
+    }
   })
 }
 
@@ -101,7 +127,7 @@ export const incrementRemoteVote = async (slideId: string, optionId: string) => 
   if (!firestore) return
   const target = doc(firestore, 'pollSlideStudioVotes', slideId)
   try {
-    await updateDoc(target, { [`counts.${optionId}`]: increment(1) })
+    await updateDoc(target, new FieldPath('counts', optionId), increment(1))
   } catch {
     await setDoc(target, { counts: { [optionId]: 1 } }, { merge: true })
   }

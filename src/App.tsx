@@ -161,16 +161,6 @@ const useStoredPresentation = () => {
   )
   const [history, setHistory] = useState<Presentation[]>([])
 
-  useEffect(() => {
-    if (!firebaseEnabled) return undefined
-    return subscribeRemotePresentation((remotePresentation) => {
-      if (!remotePresentation) return
-      const next = remotePresentation as Presentation
-      setPresentationState(next)
-      writeJson(PRESENTATION_KEY, next)
-    })
-  }, [])
-
   const setPresentation = (next: Presentation) => {
     setHistory((items) => [presentation, ...items].slice(0, 3))
     setPresentationState(next)
@@ -521,10 +511,10 @@ function AdminView() {
               <Trash2 size={18} />
             </button>
             <button type="button" onClick={exportPresentation} title="Экспорт">
-              <Download size={18} />
+              <Upload size={18} />
             </button>
             <button type="button" onClick={() => importInput.current?.click()} title="Импорт">
-              <Upload size={18} />
+              <Download size={18} />
             </button>
             <a className="button-link" href="#present">
               <Eye size={18} />
@@ -695,6 +685,7 @@ function PollBuilder({ poll, onChange, onReset }: { poll: Poll; onChange: (poll:
 function SpeakerView() {
   const [presentation, setPresentation] = useState(() => readJson(PRESENTATION_KEY, starterPresentation()))
   const [votes, setVotes] = useState(() => readJson<VoteStore>(VOTES_KEY, {}))
+  const [remotePresentationReady, setRemotePresentationReady] = useState(!firebaseEnabled)
   const [index, setIndex] = useState(0)
   const [showResults, setShowResults] = useState(false)
   const slide = presentation.slides[index]
@@ -716,6 +707,7 @@ function SpeakerView() {
     if (!firebaseEnabled) return undefined
     const unsubscribePresentation = subscribeRemotePresentation((remotePresentation) => {
       if (remotePresentation) setPresentation(remotePresentation as Presentation)
+      setRemotePresentationReady(true)
     })
     const unsubscribeVotes = subscribeRemoteVotes((remoteVotes) => {
       setVotes(remoteVotes)
@@ -728,19 +720,15 @@ function SpeakerView() {
   }, [])
 
   useEffect(() => {
-    if (!firebaseEnabled) return
-    void saveRemotePresentation(presentation)
-  }, [presentation])
-
-  useEffect(() => {
-    const openPolls = readJson<Record<string, boolean>>(OPEN_POLLS_KEY, {})
-    Object.keys(openPolls).forEach((key) => {
-      openPolls[key] = false
+    if (!remotePresentationReady) return
+    const openPolls: Record<string, boolean> = {}
+    presentation.slides.forEach((item) => {
+      if (item.poll) openPolls[item.id] = false
     })
     if (slide?.poll && !showResults) openPolls[slide.id] = true
     writeJson(OPEN_POLLS_KEY, openPolls)
     void saveRemoteOpenPolls(openPolls)
-  }, [slide?.id, slide?.poll, showResults])
+  }, [presentation.slides, remotePresentationReady, slide?.id, slide?.poll, showResults])
 
   const next = () => {
     if (slide?.poll && !showResults) {
@@ -854,6 +842,8 @@ function SlideCanvas({ slide, mode, votes }: { slide: Slide; mode: 'edit' | 'pre
 function ParticipantView({ slideId }: { slideId: string }) {
   const [presentation, setPresentation] = useState(() => readJson(PRESENTATION_KEY, starterPresentation()))
   const [openPolls, setOpenPolls] = useState(() => readJson<Record<string, boolean>>(OPEN_POLLS_KEY, {}))
+  const [remotePresentationReady, setRemotePresentationReady] = useState(!firebaseEnabled)
+  const [remoteOpenPollsReady, setRemoteOpenPollsReady] = useState(!firebaseEnabled)
   const [selected, setSelected] = useState<string | null>(() => localStorage.getItem(`poll-slide-studio.answer.${slideId}`))
   const slide = presentation.slides.find((item) => item.id === slideId)
   const poll = slide?.poll
@@ -876,10 +866,12 @@ function ParticipantView({ slideId }: { slideId: string }) {
     if (!firebaseEnabled) return undefined
     const unsubscribePresentation = subscribeRemotePresentation((remotePresentation) => {
       if (remotePresentation) setPresentation(remotePresentation as Presentation)
+      setRemotePresentationReady(true)
     })
     const unsubscribeOpenPolls = subscribeRemoteOpenPolls((remoteOpenPolls) => {
       setOpenPolls(remoteOpenPolls)
       writeJson(OPEN_POLLS_KEY, remoteOpenPolls)
+      setRemoteOpenPollsReady(true)
     })
     return () => {
       unsubscribePresentation()
@@ -896,6 +888,17 @@ function ParticipantView({ slideId }: { slideId: string }) {
     void incrementRemoteVote(slideId, optionId)
     localStorage.setItem(`poll-slide-studio.answer.${slideId}`, optionId)
     setSelected(optionId)
+  }
+
+  if (!remotePresentationReady || !remoteOpenPollsReady) {
+    return (
+      <main className="participant-screen">
+        <section className="participant-panel">
+          <h1>Загрузка опроса</h1>
+          <p>Подключаемся к презентации.</p>
+        </section>
+      </main>
+    )
   }
 
   if (!poll) {
