@@ -435,9 +435,22 @@ label {
   padding: 24px;
 }
 
+.participant-panel > * {
+  max-width: 100%;
+  min-width: 0;
+}
+
 .participant-panel h1 {
   font-size: clamp(28px, 8vw, 48px);
   overflow-wrap: anywhere;
+}
+
+.participant-panel p {
+  width: 100%;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: normal;
 }
 
 .mobile-options {
@@ -509,5 +522,9 @@ label {
   .participant-panel {
     width: calc(100vw - 36px);
     max-width: calc(100vw - 36px);
+  }
+
+  .participant-panel p {
+    max-width: 24ch;
   }
 }

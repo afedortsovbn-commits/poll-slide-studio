@@ -1,16 +1,22 @@
 # Poll Slide Studio
 
-Interactive presentation builder for browser-based slides, QR polls, presenter controls, and participant voting.
+Интерактивная браузерная презентация с админкой, режимом показа, QR-опросами и голосованием участников.
 
-Repository name: `poll-slide-studio`
+Репозиторий: `poll-slide-studio`
 
-GitHub Pages URL:
+GitHub Pages:
 
 ```text
 https://afedortsovbn-commits.github.io/poll-slide-studio/
 ```
 
-## Commands
+## Ссылки
+
+- Админка: `#/admin`
+- Показ презентации: `#/present`
+- Опрос участника: `#/poll/<slide-id>`
+
+## Команды
 
 ```powershell
 npm.cmd install
@@ -20,22 +26,53 @@ npm.cmd run build
 npm.cmd run preview
 ```
 
-## Current Data Mode
+## Режим данных
 
-The first milestone uses browser `localStorage` for presentation data and demo voting. This is enough for interface development, export/import, and local validation.
+Без Firebase приложение работает локально через `localStorage`. Это удобно для настройки интерфейса и проверки на одном компьютере.
 
-For real voting from any network, connect a realtime backend such as Supabase while keeping GitHub Pages as the static host.
+Если задать Firebase-конфигурацию, включается realtime-режим:
 
-## Routes
+- админка сохраняет презентацию в Firestore;
+- спикер открывает и закрывает опросы в Firestore;
+- участники отправляют ответы в Firestore;
+- экран спикера получает реальные ответы и показывает результаты.
 
-- `#/admin` - admin workspace.
-- `#/present` - speaker view.
-- `#/poll/<slide-id>` - participant voting view.
+## Настройка Firebase
 
-## Verification Checklist
+1. Создать проект в Firebase.
+2. Создать Web App внутри проекта.
+3. Включить Firestore Database.
+4. Скопировать параметры web config в файл `.env` по примеру `.env.example`.
+5. Собрать проект заново командой `npm.cmd run build`.
+6. Опубликовать обновленный `docs/` на GitHub Pages.
 
-- Build passes.
-- Lint passes.
-- Admin works on desktop viewports.
-- Speaker controls support keyboard, presenter clickers, and result reveal.
-- Participant view works on mobile portrait viewports.
+Firebase web config не является паролем, но без него публичная сборка не сможет подключиться к Firestore.
+
+Минимальные правила Firestore для демонстрационного режима:
+
+```js
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /pollSlideStudio/{document=**} {
+      allow read, write: if true;
+    }
+
+    match /pollSlideStudioVotes/{document=**} {
+      allow read, write: if true;
+    }
+  }
+}
+```
+
+Эти правила открытые: они подходят для первой рабочей проверки, но не защищают от намеренного изменения данных посторонним человеком. Для публичного продукта нужно добавить Firebase Auth, App Check и более строгие правила.
+
+## Проверка перед сдачей
+
+- `npm.cmd run lint`
+- `npm.cmd run build`
+- открыть админку на desktop;
+- открыть показ на desktop;
+- открыть опрос участника на mobile viewport;
+- проверить, что нет пустых экранов, ошибок и сломанной верстки.

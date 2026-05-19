@@ -17,6 +17,16 @@ import {
   Trash2,
   Upload,
 } from 'lucide-react'
+import {
+  firebaseEnabled,
+  incrementRemoteVote,
+  resetRemoteVotes,
+  saveRemoteOpenPolls,
+  saveRemotePresentation,
+  subscribeRemoteOpenPolls,
+  subscribeRemotePresentation,
+  subscribeRemoteVotes,
+} from './realtime'
 import './App.css'
 
 type Transition = 'fade' | 'slide' | 'zoom' | 'none'
@@ -132,10 +142,21 @@ const useStoredPresentation = () => {
   )
   const [history, setHistory] = useState<Presentation[]>([])
 
+  useEffect(() => {
+    if (!firebaseEnabled) return undefined
+    return subscribeRemotePresentation((remotePresentation) => {
+      if (!remotePresentation) return
+      const next = remotePresentation as Presentation
+      setPresentationState(next)
+      writeJson(PRESENTATION_KEY, next)
+    })
+  }, [])
+
   const setPresentation = (next: Presentation) => {
     setHistory((items) => [presentation, ...items].slice(0, 3))
     setPresentationState(next)
     writeJson(PRESENTATION_KEY, next)
+    void saveRemotePresentation(next)
   }
 
   const undo = () => {
@@ -144,6 +165,7 @@ const useStoredPresentation = () => {
     setHistory(rest)
     setPresentationState(previous)
     writeJson(PRESENTATION_KEY, previous)
+    void saveRemotePresentation(previous)
   }
 
   return { presentation, setPresentation, undo, canUndo: history.length > 0 }
@@ -325,6 +347,7 @@ function AdminView() {
     if (slideId) delete votes[slideId]
     else Object.keys(votes).forEach((key) => delete votes[key])
     writeJson(VOTES_KEY, votes)
+    void resetRemoteVotes(slideId)
   }
 
   const exportPresentation = () => {
@@ -600,12 +623,28 @@ function SpeakerView() {
   }, [])
 
   useEffect(() => {
+    if (!firebaseEnabled) return undefined
+    const unsubscribePresentation = subscribeRemotePresentation((remotePresentation) => {
+      if (remotePresentation) setPresentation(remotePresentation as Presentation)
+    })
+    const unsubscribeVotes = subscribeRemoteVotes((remoteVotes) => {
+      setVotes(remoteVotes)
+      writeJson(VOTES_KEY, remoteVotes)
+    })
+    return () => {
+      unsubscribePresentation()
+      unsubscribeVotes()
+    }
+  }, [])
+
+  useEffect(() => {
     const openPolls = readJson<Record<string, boolean>>(OPEN_POLLS_KEY, {})
     Object.keys(openPolls).forEach((key) => {
       openPolls[key] = false
     })
     if (slide?.poll && !showResults) openPolls[slide.id] = true
     writeJson(OPEN_POLLS_KEY, openPolls)
+    void saveRemoteOpenPolls(openPolls)
   }, [slide?.id, slide?.poll, showResults])
 
   const next = () => {
@@ -743,12 +782,28 @@ function ParticipantView({ slideId }: { slideId: string }) {
     }
   }, [])
 
+  useEffect(() => {
+    if (!firebaseEnabled) return undefined
+    const unsubscribePresentation = subscribeRemotePresentation((remotePresentation) => {
+      if (remotePresentation) setPresentation(remotePresentation as Presentation)
+    })
+    const unsubscribeOpenPolls = subscribeRemoteOpenPolls((remoteOpenPolls) => {
+      setOpenPolls(remoteOpenPolls)
+      writeJson(OPEN_POLLS_KEY, remoteOpenPolls)
+    })
+    return () => {
+      unsubscribePresentation()
+      unsubscribeOpenPolls()
+    }
+  }, [])
+
   const answer = (optionId: string) => {
     if (!poll || selected || !isOpen) return
     const votes = readJson<VoteStore>(VOTES_KEY, {})
     votes[slideId] = votes[slideId] ?? {}
     votes[slideId][optionId] = (votes[slideId][optionId] ?? 0) + 1
     writeJson(VOTES_KEY, votes)
+    void incrementRemoteVote(slideId, optionId)
     localStorage.setItem(`poll-slide-studio.answer.${slideId}`, optionId)
     setSelected(optionId)
   }
