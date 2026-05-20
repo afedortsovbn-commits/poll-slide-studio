@@ -162,8 +162,13 @@ const readJson = <T,>(key: string, fallback: T): T => {
 }
 
 const writeJson = (key: string, value: unknown) => {
-  localStorage.setItem(key, JSON.stringify(value))
-  window.dispatchEvent(new Event('poll-slide-studio-storage'))
+  try {
+    localStorage.setItem(key, JSON.stringify(value))
+    window.dispatchEvent(new Event('poll-slide-studio-storage'))
+    return true
+  } catch {
+    return false
+  }
 }
 
 const readAuthStore = (): AuthStore => {
