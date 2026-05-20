@@ -322,7 +322,7 @@ function App() {
   }, [])
 
   if (route.startsWith('poll/')) {
-    return <ParticipantView key={route} slideId={route.split('/')[1].split('?')[0]} />
+    return <ParticipantView slideId={route.split('/')[1].split('?')[0]} />
   }
 
   if (route === 'present') {
@@ -600,13 +600,7 @@ function AdminView() {
           <Trash2 size={16} />
           Удалить выбранные
         </button>
-        <div
-          className="slides"
-          onWheel={(event) => {
-            event.preventDefault()
-            event.currentTarget.scrollTop -= event.deltaY
-          }}
-        >
+        <div className="slides">
           {presentation.slides.map((slide, index) => (
             <div
               className={slide.id === selected?.id ? 'thumb active' : 'thumb'}
@@ -1120,19 +1114,6 @@ function ParticipantView({ slideId }: { slideId: string }) {
   )
 
   useEffect(() => {
-    if (!selected) return
-    const nextPoll = Object.entries(openPolls).find(([id, value]) => {
-      if (id === slideId) return false
-      if (value === true) return true
-      return Boolean(value && typeof value === 'object' && 'isOpen' in value && value.isOpen)
-    })
-    if (nextPoll) {
-      const nextPollUrl = `${window.location.origin}${window.location.pathname}#poll/${nextPoll[0]}`
-      if (window.location.href !== nextPollUrl) window.location.href = nextPollUrl
-    }
-  }, [openPolls, selected, slideId])
-
-  useEffect(() => {
     const sync = () => {
       setPresentation(readJson(PRESENTATION_KEY, starterPresentation()))
       setOpenPolls(readJson(OPEN_POLLS_KEY, {}))
@@ -1230,7 +1211,6 @@ function ParticipantView({ slideId }: { slideId: string }) {
           <>
             <h1>Спасибо!</h1>
             {correct && <p>Правильный ответ: {correct}</p>}
-            <p>Ждем следующий открытый опрос.</p>
             {answerError && <p className="form-error">{answerError}</p>}
           </>
         ) : (
