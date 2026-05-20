@@ -67,6 +67,7 @@ type VoteStore = Record<string, Record<string, number>>
 
 type PollUrlData = {
   s: string
+  n?: string
   q: string
   o: [string, string][]
   c?: string
@@ -227,13 +228,16 @@ const pollFromUrlData = (data: PollUrlData): Poll => ({
   optionsY: 36,
 })
 
-const getPollUrl = (slide: Slide) => {
+const createPollSession = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+
+const getPollUrl = (slide: Slide, pollSession?: string) => {
   const poll = slide.poll ?? starterPoll()
   const url = new URL(window.location.href)
   url.searchParams.set(
     'poll',
     encodePollUrlData({
       s: slide.id,
+      n: pollSession,
       q: poll.question,
       o: poll.options.map((option) => [option.id, option.text]),
       c: poll.correctOptionId,
@@ -743,8 +747,10 @@ function SpeakerView() {
   const [presentation, setPresentation] = useState(() => readJson(PRESENTATION_KEY, starterPresentation()))
   const [votes, setVotes] = useState(() => readJson<VoteStore>(VOTES_KEY, {}))
   const [remotePresentationReady, setRemotePresentationReady] = useState(!firebaseEnabled)
+  const [pollSessions, setPollSessions] = useState<Record<string, string>>({})
   const [index, setIndex] = useState(0)
   const [showResults, setShowResults] = useState(false)
+  const previousOpenPollKey = useRef('')
   const slide = presentation.slides[index]
 
   useEffect(() => {
@@ -775,6 +781,14 @@ function SpeakerView() {
       unsubscribeVotes()
     }
   }, [])
+
+  useEffect(() => {
+    const openPollKey = slide?.poll && !showResults ? slide.id : ''
+    if (openPollKey && previousOpenPollKey.current !== openPollKey) {
+      setPollSessions((items) => ({ ...items, [openPollKey]: createPollSession() }))
+    }
+    previousOpenPollKey.current = openPollKey
+  }, [slide?.id, slide?.poll, showResults])
 
   useEffect(() => {
     if (!remotePresentationReady) return
@@ -826,7 +840,13 @@ function SpeakerView() {
 
   return (
     <main className="presenter-screen">
-      <SlideCanvas key={`${slide.id}-${showResults}`} slide={slide} mode={showResults ? 'results' : 'present'} votes={votes[slide.id] ?? {}} />
+      <SlideCanvas
+        key={`${slide.id}-${showResults}`}
+        slide={slide}
+        mode={showResults ? 'results' : 'present'}
+        votes={votes[slide.id] ?? {}}
+        pollSession={pollSessions[slide.id]}
+      />
       <div className="presenter-controls">
         <button type="button" onClick={previous}>
           <ArrowLeft size={20} />
@@ -842,7 +862,17 @@ function SpeakerView() {
   )
 }
 
-function SlideCanvas({ slide, mode, votes }: { slide: Slide; mode: 'edit' | 'present' | 'results'; votes: Record<string, number> }) {
+function SlideCanvas({
+  slide,
+  mode,
+  votes,
+  pollSession,
+}: {
+  slide: Slide
+  mode: 'edit' | 'present' | 'results'
+  votes: Record<string, number>
+  pollSession?: string
+}) {
   const sortedOptions = useMemo(() => {
     if (!slide.poll) return []
     const options = [...slide.poll.options]
@@ -893,7 +923,7 @@ function SlideCanvas({ slide, mode, votes }: { slide: Slide; mode: 'edit' | 'pre
           </div>
           {mode !== 'results' && (
             <div className="qr-box">
-              <QRCodeSVG value={getPollUrl(slide)} size={168} />
+              <QRCodeSVG value={getPollUrl(slide, pollSession)} size={168} />
             </div>
           )}
         </>
