@@ -30,6 +30,7 @@ import {
   saveRemoteOpenPolls,
   saveRemotePollSession,
   saveRemotePresentation,
+  readRemoteVotes,
   subscribeRemoteOpenPolls,
   subscribeRemoteVotes,
   type RemotePollSession,
@@ -1000,6 +1001,12 @@ function SpeakerView() {
   const next = () => {
     if (slide?.poll && !showResults) {
       setShowResults(true)
+      void readRemoteVotes().then((remoteVotes) => {
+        if (remoteVotes) {
+          setVotes(remoteVotes)
+          writeJson(VOTES_KEY, remoteVotes)
+        }
+      })
       return
     }
     setShowResults(false)

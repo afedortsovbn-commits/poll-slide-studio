@@ -274,7 +274,60 @@ export const readRemotePollSession = async (sessionId: string) => {
   }
 }
 
+export const readRemoteVotes = async () => {
+  const realtimeVotesUrl = realtimeRestUrl('pollSlideStudioVotes')
+  if (realtimeVotesUrl) {
+    try {
+      const response = await fetchWithTimeout(realtimeVotesUrl, undefined, 15000)
+      if (!response.ok) return null
+      return ((await response.json()) ?? {}) as RemoteVoteStore
+    } catch {
+      return null
+    }
+  }
+
+  const realtime = getRealtimeDb()
+  if (realtime) {
+    try {
+      const snapshot = await get(ref(realtime, 'pollSlideStudioVotes'))
+      return (snapshot.val() ?? {}) as RemoteVoteStore
+    } catch {
+      return null
+    }
+  }
+
+  return null
+}
+
 export const subscribeRemoteVotes = (onChange: (votes: RemoteVoteStore) => void) => {
+  const realtimeVotesUrl = realtimeRestUrl('pollSlideStudioVotes')
+  if (realtimeVotesUrl) {
+    let stopped = false
+    let previous = ''
+    const read = async () => {
+      try {
+        const response = await fetchWithTimeout(realtimeVotesUrl, undefined, 15000)
+        if (!response.ok) return
+        const votes = ((await response.json()) ?? {}) as RemoteVoteStore
+        const next = JSON.stringify(votes)
+        if (next !== previous) {
+          previous = next
+          onChange(votes)
+        }
+      } catch {
+        // The next polling tick will try again.
+      }
+    }
+    void read()
+    const interval = window.setInterval(() => {
+      if (!stopped) void read()
+    }, 1500)
+    return () => {
+      stopped = true
+      window.clearInterval(interval)
+    }
+  }
+
   const realtime = getRealtimeDb()
   if (realtime) {
     let previous = ''
