@@ -52,6 +52,8 @@ let app: FirebaseApp | null = null
 let db: Firestore | null = null
 let realtimeDb: Database | null = null
 const realtimeStatePath = (name: string) => `pollSlideStudioSessions/__state/${name}`
+const realtimeRestUrl = (path: string) =>
+  firebaseConfig.databaseURL ? `${firebaseConfig.databaseURL.replace(/\/$/, '')}/${path}.json` : ''
 
 const getApp = () => {
   if (!firebaseEnabled) return null
@@ -86,6 +88,16 @@ const stateDoc = (name: string) => {
   return firestore ? doc(firestore, 'pollSlideStudio', name) : null
 }
 
+const fetchWithTimeout = async (url: string, init?: RequestInit, timeoutMs = 10000) => {
+  const controller = new AbortController()
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    return await fetch(url, { ...init, signal: controller.signal })
+  } finally {
+    window.clearTimeout(timeout)
+  }
+}
+
 const parseRemoteJson = <T,>(data: unknown, fallback: T) => {
   if (!data || typeof data !== 'object') return fallback
   const record = data as { json?: unknown; value?: unknown }
@@ -95,11 +107,15 @@ const parseRemoteJson = <T,>(data: unknown, fallback: T) => {
 }
 
 const saveRemoteJson = async (name: string, value: unknown) => {
-  const realtime = getRealtimeDb()
-  if (realtime) {
+  const realtimeUrl = realtimeRestUrl(realtimeStatePath(name))
+  if (realtimeUrl) {
     try {
-      await set(ref(realtime, realtimeStatePath(name)), { json: JSON.stringify(value), updatedAt: Date.now() })
-      return true
+      const response = await fetchWithTimeout(realtimeUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ json: JSON.stringify(value), updatedAt: Date.now() }),
+      })
+      return response.ok
     } catch {
       return false
     }
@@ -118,27 +134,33 @@ const saveRemoteJson = async (name: string, value: unknown) => {
 const subscribeRemoteJson = <T,>(name: string, fallback: T, onChange: (value: T) => void, onError?: () => void) => {
   if (!firebaseEnabled) return () => undefined
   let previous = ''
-  const realtime = getRealtimeDb()
-  if (realtime) {
-    return onValue(
-      ref(realtime, realtimeStatePath(name)),
-      (snapshot) => {
-        try {
-          const value = snapshot.exists() ? parseRemoteJson<T>(snapshot.val(), fallback) : fallback
-          const next = JSON.stringify(value)
-          if (next !== previous) {
-            previous = next
-            onChange(value)
-          }
-        } catch {
-          if (!previous) onChange(fallback)
+  const realtimeUrl = realtimeRestUrl(realtimeStatePath(name))
+  if (realtimeUrl) {
+    let stopped = false
+    const read = async () => {
+      try {
+        const response = await fetchWithTimeout(realtimeUrl, undefined, 8000)
+        if (!response.ok) throw new Error('Realtime Database read failed')
+        const data = await response.json()
+        const value = data ? parseRemoteJson<T>(data, fallback) : fallback
+        const next = JSON.stringify(value)
+        if (next !== previous) {
+          previous = next
+          onChange(value)
         }
-      },
-      () => {
+      } catch {
         onError?.()
         if (!previous) onChange(fallback)
-      },
-    )
+      }
+    }
+    void read()
+    const interval = window.setInterval(() => {
+      if (!stopped) void read()
+    }, 2000)
+    return () => {
+      stopped = true
+      window.clearInterval(interval)
+    }
   }
 
   const target = stateDoc(name)
