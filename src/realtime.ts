@@ -1,10 +1,9 @@
 import { initializeApp, type FirebaseApp } from 'firebase/app'
 import {
-  collection,
   deleteDoc,
+  deleteField,
   doc,
   FieldPath,
-  getDocs,
   increment,
   initializeFirestore,
   onSnapshot,
@@ -111,14 +110,11 @@ export const subscribeRemoteOpenPolls = (onChange: (openPolls: RemoteOpenPolls) 
 export const subscribeRemoteVotes = (onChange: (votes: RemoteVoteStore) => void) => {
   if (!firebaseEnabled) return () => undefined
   let previous = ''
-  const firestore = getDb()
-  if (!firestore) return () => undefined
-  return onSnapshot(collection(firestore, 'pollSlideStudioVotes'), (snapshot) => {
-    const votes: RemoteVoteStore = {}
-    snapshot.forEach((item) => {
-      const counts = item.data().counts
-      votes[item.id] = counts && typeof counts === 'object' ? (counts as Record<string, number>) : {}
-    })
+  const target = stateDoc('votes')
+  if (!target) return () => undefined
+  return onSnapshot(target, (snapshot) => {
+    const counts = snapshot.data()?.counts
+    const votes = counts && typeof counts === 'object' ? (counts as RemoteVoteStore) : {}
     const next = JSON.stringify(votes)
     if (next !== previous) {
       previous = next
@@ -130,13 +126,13 @@ export const subscribeRemoteVotes = (onChange: (votes: RemoteVoteStore) => void)
 export const incrementRemoteVote = async (slideId: string, optionId: string) => {
   const firestore = getDb()
   if (!firestore) return false
-  const target = doc(firestore, 'pollSlideStudioVotes', slideId)
+  const target = doc(firestore, 'pollSlideStudio', 'votes')
   try {
-    await updateDoc(target, new FieldPath('counts', optionId), increment(1))
+    await updateDoc(target, new FieldPath('counts', slideId, optionId), increment(1))
     return true
   } catch {
     try {
-      await setDoc(target, { counts: { [optionId]: 1 } }, { merge: true })
+      await setDoc(target, { counts: { [slideId]: { [optionId]: 1 } } }, { merge: true })
       return true
     } catch {
       return false
@@ -147,10 +143,14 @@ export const incrementRemoteVote = async (slideId: string, optionId: string) => 
 export const resetRemoteVotes = async (slideId?: string) => {
   const firestore = getDb()
   if (!firestore) return
+  const target = doc(firestore, 'pollSlideStudio', 'votes')
   if (slideId) {
-    await deleteDoc(doc(firestore, 'pollSlideStudioVotes', slideId))
+    try {
+      await updateDoc(target, new FieldPath('counts', slideId), deleteField())
+    } catch {
+      // Nothing to reset yet.
+    }
     return
   }
-  const snapshot = await getDocs(collection(firestore, 'pollSlideStudioVotes'))
-  await Promise.all(snapshot.docs.map((item) => deleteDoc(item.ref)))
+  await deleteDoc(target)
 }
