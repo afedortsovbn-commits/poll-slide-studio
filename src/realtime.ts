@@ -91,7 +91,7 @@ const stateDoc = (name: string) => {
   return firestore ? doc(firestore, 'pollSlideStudio', name) : null
 }
 
-const fetchWithTimeout = async (url: string, init?: RequestInit, timeoutMs = 10000) => {
+const fetchWithTimeout = async (url: string, init?: RequestInit, timeoutMs = 60000) => {
   const controller = new AbortController()
   const timeout = window.setTimeout(() => controller.abort(), timeoutMs)
   try {
@@ -117,7 +117,7 @@ const saveRemoteJson = async (name: string, value: unknown) => {
         const response = await fetchWithTimeout(realtimeUrl, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ json: JSON.stringify(value), updatedAt: Date.now() }),
+          body: JSON.stringify({ value, updatedAt: Date.now() }),
         })
         if (response.ok) return true
       } catch {
