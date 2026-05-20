@@ -992,13 +992,13 @@ function ParticipantView({ slideId }: { slideId: string }) {
     votes[slideId] = votes[slideId] ?? {}
     votes[slideId][optionId] = (votes[slideId][optionId] ?? 0) + 1
     writeJson(VOTES_KEY, votes)
+    localStorage.setItem(answerKey, optionId)
+    setSelected(optionId)
     const saved = await incrementRemoteVote(slideId, optionId)
     if (!saved && firebaseEnabled) {
       setAnswerError('Не удалось отправить ответ. Обновите страницу и попробуйте еще раз.')
       return
     }
-    localStorage.setItem(answerKey, optionId)
-    setSelected(optionId)
   }
 
   if (!pollFromUrl && (!remotePresentationReady || !remoteOpenPollsReady)) {
