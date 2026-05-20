@@ -1,5 +1,5 @@
 import { initializeApp, type FirebaseApp } from 'firebase/app'
-import { getDatabase, onValue, ref, remove, runTransaction, type Database } from 'firebase/database'
+import { get, getDatabase, onValue, ref, remove, runTransaction, set, type Database } from 'firebase/database'
 import {
   deleteDoc,
   deleteField,
@@ -25,6 +25,11 @@ export type RemoteOpenPoll = boolean | {
   poll: unknown
 }
 export type RemoteOpenPolls = Record<string, RemoteOpenPoll>
+export type RemotePollSession = {
+  slideId: string
+  poll: unknown
+  isOpen: boolean
+}
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -126,6 +131,28 @@ export const saveRemoteOpenPolls = async (openPolls: RemoteOpenPolls) => {
 
 export const subscribeRemoteOpenPolls = (onChange: (openPolls: RemoteOpenPolls) => void) =>
   subscribeRemoteJson<RemoteOpenPolls>('openPolls', {}, onChange)
+
+export const saveRemotePollSession = async (sessionId: string, session: RemotePollSession) => {
+  const realtime = getRealtimeDb()
+  if (!realtime) return false
+  try {
+    await set(ref(realtime, `pollSlideStudioSessions/${sessionId}`), session)
+    return true
+  } catch {
+    return false
+  }
+}
+
+export const readRemotePollSession = async (sessionId: string) => {
+  const realtime = getRealtimeDb()
+  if (!realtime) return null
+  try {
+    const snapshot = await get(ref(realtime, `pollSlideStudioSessions/${sessionId}`))
+    return (snapshot.val() ?? null) as RemotePollSession | null
+  } catch {
+    return null
+  }
+}
 
 export const subscribeRemoteVotes = (onChange: (votes: RemoteVoteStore) => void) => {
   const realtime = getRealtimeDb()

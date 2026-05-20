@@ -21,12 +21,15 @@ import {
 import {
   firebaseEnabled,
   incrementRemoteVote,
+  readRemotePollSession,
   resetRemoteVotes,
   saveRemoteOpenPolls,
+  saveRemotePollSession,
   saveRemotePresentation,
   subscribeRemoteOpenPolls,
   subscribeRemotePresentation,
   subscribeRemoteVotes,
+  type RemotePollSession,
   type RemoteOpenPolls,
 } from './realtime'
 import './App.css'
@@ -68,9 +71,14 @@ type VoteStore = Record<string, Record<string, number>>
 type PollUrlData = {
   s: string
   n?: string
-  q: string
-  o: [string, string][]
+  q?: string
+  o?: [string, string][]
   c?: string
+}
+
+type ShortPollUrlData = {
+  s: string
+  n: string
 }
 
 type AuthState = {
@@ -217,8 +225,8 @@ const decodePollUrlData = (value: string | null): PollUrlData | null => {
 }
 
 const pollFromUrlData = (data: PollUrlData): Poll => ({
-  question: data.q,
-  options: data.o.map(([id, text]) => ({ id, text })),
+  question: data.q ?? '',
+  options: (data.o ?? []).map(([id, text]) => ({ id, text })),
   correctOptionId: data.c,
   questionScale: 100,
   optionScale: 100,
@@ -228,6 +236,12 @@ const pollFromUrlData = (data: PollUrlData): Poll => ({
   optionsY: 36,
 })
 
+const shortPollDataFromParam = (value: string | null): ShortPollUrlData | null => {
+  const decoded = decodePollUrlData(value)
+  if (!decoded?.s || !decoded.n || decoded.q) return null
+  return { s: decoded.s, n: decoded.n }
+}
+
 const createPollSession = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 
 const getPollUrl = (slide: Slide, pollSession?: string) => {
@@ -235,13 +249,14 @@ const getPollUrl = (slide: Slide, pollSession?: string) => {
   const url = new URL(window.location.href)
   url.searchParams.set(
     'poll',
-    encodePollUrlData({
-      s: slide.id,
-      n: pollSession,
-      q: poll.question,
-      o: poll.options.map((option) => [option.id, option.text]),
-      c: poll.correctOptionId,
-    }),
+    pollSession
+      ? encodePollUrlData({ s: slide.id, n: pollSession })
+      : encodePollUrlData({
+          s: slide.id,
+          q: poll.question,
+          o: poll.options.map((option) => [option.id, option.text]),
+          c: poll.correctOptionId,
+        }),
   )
   url.hash = `poll/${slide.id}`
   return url.toString()
@@ -802,10 +817,18 @@ function SpeakerView() {
         title: slide.title,
         poll: slide.poll,
       }
+      const sessionId = pollSessions[slide.id]
+      if (sessionId) {
+        void saveRemotePollSession(sessionId, {
+          slideId: slide.id,
+          poll: slide.poll,
+          isOpen: !showResults,
+        })
+      }
     }
     writeJson(OPEN_POLLS_KEY, openPolls)
     void saveRemoteOpenPolls(openPolls)
-  }, [presentation.slides, remotePresentationReady, slide?.id, slide?.poll, slide?.title, showResults])
+  }, [pollSessions, presentation.slides, remotePresentationReady, slide?.id, slide?.poll, slide?.title, showResults])
 
   const next = () => {
     if (slide?.poll && !showResults) {
@@ -941,16 +964,20 @@ function ParticipantView({ slideId }: { slideId: string }) {
   const answerKey = `poll-slide-studio.answer.${slideId}.${pollParam ?? 'live'}`
   const [selected, setSelected] = useState<string | null>(() => localStorage.getItem(answerKey))
   const [answerError, setAnswerError] = useState('')
+  const [remotePollSession, setRemotePollSession] = useState<RemotePollSession | null>(null)
+  const shortPollData = useMemo(() => shortPollDataFromParam(pollParam), [pollParam])
   const pollFromUrl = useMemo(() => {
     const decoded = decodePollUrlData(pollParam)
-    return decoded?.s === slideId ? pollFromUrlData(decoded) : undefined
+    return decoded?.s === slideId && decoded.q ? pollFromUrlData(decoded) : undefined
   }, [pollParam, slideId])
   const slide = presentation.slides.find((item) => item.id === slideId)
   const openPoll = openPolls[slideId]
   const openPollPayload = openPoll && typeof openPoll === 'object' ? openPoll : null
   const openPollSlidePoll = openPollPayload?.poll as Poll | undefined
-  const poll = slide?.poll ?? openPollSlidePoll ?? pollFromUrl
+  const sessionPoll = remotePollSession?.slideId === slideId ? (remotePollSession.poll as Poll) : undefined
+  const poll = sessionPoll ?? slide?.poll ?? openPollSlidePoll ?? pollFromUrl
   const isOpen = Boolean(
+    (remotePollSession?.slideId === slideId && remotePollSession.isOpen) ||
     openPoll === true ||
       (openPollPayload && openPollPayload.isOpen) ||
       pollFromUrl,
@@ -968,6 +995,17 @@ function ParticipantView({ slideId }: { slideId: string }) {
       window.removeEventListener('poll-slide-studio-storage', sync)
     }
   }, [])
+
+  useEffect(() => {
+    if (!shortPollData || shortPollData.s !== slideId) return undefined
+    let active = true
+    void readRemotePollSession(shortPollData.n).then((session) => {
+      if (active) setRemotePollSession(session)
+    })
+    return () => {
+      active = false
+    }
+  }, [shortPollData, slideId])
 
   useEffect(() => {
     if (!firebaseEnabled) return undefined
@@ -1001,7 +1039,7 @@ function ParticipantView({ slideId }: { slideId: string }) {
     }
   }
 
-  if (!pollFromUrl && (!remotePresentationReady || !remoteOpenPollsReady)) {
+  if (!pollFromUrl && !remotePollSession && (!remotePresentationReady || !remoteOpenPollsReady)) {
     return (
       <main className="participant-screen">
         <section className="participant-panel">
