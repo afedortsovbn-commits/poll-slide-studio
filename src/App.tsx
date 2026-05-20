@@ -99,6 +99,7 @@ const AUTH_KEY = 'poll-slide-studio.auth'
 const AUTH_USERS_KEY = 'poll-slide-studio.auth-users'
 const SESSION_KEY = 'poll-slide-studio.session'
 const PRESENTATION_KEY = 'poll-slide-studio.presentation'
+const PRESENTATION_CACHE_KEY = 'poll-slide-studio.presentation-cache'
 const PRESENTATION_AUDIO_KEY = 'poll-slide-studio.presentation-audio'
 const VOTES_KEY = 'poll-slide-studio.votes'
 const OPEN_POLLS_KEY = 'poll-slide-studio.open-polls'
@@ -905,9 +906,9 @@ function PollBuilder({ poll, onChange, onReset }: { poll: Poll; onChange: (poll:
 }
 
 function SpeakerView() {
-  const [presentation, setPresentation] = useState(() => readJson(PRESENTATION_KEY, starterPresentation()))
+  const [presentation, setPresentation] = useState(() => readJson(PRESENTATION_CACHE_KEY, readJson(PRESENTATION_KEY, starterPresentation())))
   const [votes, setVotes] = useState(() => readJson<VoteStore>(VOTES_KEY, {}))
-  const [remotePresentationReady, setRemotePresentationReady] = useState(!firebaseEnabled)
+  const [remotePresentationReady, setRemotePresentationReady] = useState(() => Boolean(readJson<Presentation | null>(PRESENTATION_CACHE_KEY, null)) || !firebaseEnabled)
   const [remotePresentationError, setRemotePresentationError] = useState(false)
   const [pollSessions, setPollSessions] = useState<Record<string, string>>({})
   const [audio, setAudio] = useState(() => readJson<{ name: string; data: string } | null>(PRESENTATION_AUDIO_KEY, null))
@@ -920,7 +921,6 @@ function SpeakerView() {
 
   useEffect(() => {
     const sync = () => {
-      setPresentation(readJson(PRESENTATION_KEY, starterPresentation()))
       setVotes(readJson(VOTES_KEY, {}))
       setAudio(readJson(PRESENTATION_AUDIO_KEY, null))
     }
@@ -940,7 +940,7 @@ function SpeakerView() {
         if (!active) return
         if (remotePresentation) {
           setPresentation(remotePresentation as Presentation)
-          writeJson(PRESENTATION_KEY, remotePresentation)
+          writeJson(PRESENTATION_CACHE_KEY, remotePresentation)
         }
         setRemotePresentationReady(true)
       })
@@ -1004,6 +1004,22 @@ function SpeakerView() {
   const previous = () => {
     setShowResults(false)
     setIndex((value) => Math.max(value - 1, 0))
+  }
+
+  const refreshPublishedPresentation = async () => {
+    setRemotePresentationReady(false)
+    setRemotePresentationError(false)
+    const remotePresentation = await readRemotePresentation()
+    if (remotePresentation) {
+      setPresentation(remotePresentation as Presentation)
+      writeJson(PRESENTATION_CACHE_KEY, remotePresentation)
+      setIndex(0)
+      setShowResults(false)
+      setRemotePresentationReady(true)
+      return
+    }
+    setRemotePresentationError(true)
+    setRemotePresentationReady(true)
   }
 
   const toggleMusic = () => {
@@ -1086,6 +1102,9 @@ function SpeakerView() {
             {musicPlaying ? <VolumeX size={20} /> : <Music size={20} />}
           </button>
         )}
+        <button type="button" onClick={() => void refreshPublishedPresentation()} title="Обновить опубликованную презентацию">
+          <RotateCcw size={20} />
+        </button>
       </div>
       {audio && <audio ref={audioRef} src={audio.data} onEnded={() => setMusicPlaying(false)} />}
     </main>
