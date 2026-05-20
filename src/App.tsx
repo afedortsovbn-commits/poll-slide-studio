@@ -66,9 +66,10 @@ type Presentation = {
 type VoteStore = Record<string, Record<string, number>>
 
 type PollUrlData = {
-  slideId: string
-  title: string
-  poll: Poll
+  s: string
+  q: string
+  o: [string, string][]
+  c?: string
 }
 
 type AuthState = {
@@ -187,28 +188,55 @@ const useStoredPresentation = () => {
   return { presentation, setPresentation, undo, canUndo: history.length > 0 }
 }
 
-const encodePollUrlData = (value: PollUrlData) =>
-  btoa(encodeURIComponent(JSON.stringify(value))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+const toBase64Url = (value: string) => {
+  const bytes = new TextEncoder().encode(value)
+  let binary = ''
+  bytes.forEach((byte) => {
+    binary += String.fromCharCode(byte)
+  })
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
+
+const fromBase64Url = (value: string) => {
+  const normalized = value.replace(/-/g, '+').replace(/_/g, '/')
+  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=')
+  const binary = atob(padded)
+  return new TextDecoder().decode(Uint8Array.from(binary, (char) => char.charCodeAt(0)))
+}
+
+const encodePollUrlData = (value: PollUrlData) => toBase64Url(JSON.stringify(value))
 
 const decodePollUrlData = (value: string | null): PollUrlData | null => {
   if (!value) return null
   try {
-    const normalized = value.replace(/-/g, '+').replace(/_/g, '/')
-    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=')
-    return JSON.parse(decodeURIComponent(atob(padded))) as PollUrlData
+    return JSON.parse(fromBase64Url(value)) as PollUrlData
   } catch {
     return null
   }
 }
 
+const pollFromUrlData = (data: PollUrlData): Poll => ({
+  question: data.q,
+  options: data.o.map(([id, text]) => ({ id, text })),
+  correctOptionId: data.c,
+  questionScale: 100,
+  optionScale: 100,
+  questionX: 8,
+  questionY: 12,
+  optionsX: 8,
+  optionsY: 36,
+})
+
 const getPollUrl = (slide: Slide) => {
+  const poll = slide.poll ?? starterPoll()
   const url = new URL(window.location.href)
   url.searchParams.set(
     'poll',
     encodePollUrlData({
-      slideId: slide.id,
-      title: slide.title,
-      poll: slide.poll ?? starterPoll(),
+      s: slide.id,
+      q: poll.question,
+      o: poll.options.map((option) => [option.id, option.text]),
+      c: poll.correctOptionId,
     }),
   )
   url.hash = `poll/${slide.id}`
@@ -880,9 +908,10 @@ function ParticipantView({ slideId }: { slideId: string }) {
   const [remotePresentationReady, setRemotePresentationReady] = useState(!firebaseEnabled)
   const [remoteOpenPollsReady, setRemoteOpenPollsReady] = useState(!firebaseEnabled)
   const [selected, setSelected] = useState<string | null>(() => localStorage.getItem(`poll-slide-studio.answer.${slideId}`))
+  const [answerError, setAnswerError] = useState('')
   const pollFromUrl = useMemo(() => {
     const decoded = decodePollUrlData(new URLSearchParams(window.location.search).get('poll'))
-    return decoded?.slideId === slideId ? decoded.poll : undefined
+    return decoded?.s === slideId ? pollFromUrlData(decoded) : undefined
   }, [slideId])
   const slide = presentation.slides.find((item) => item.id === slideId)
   const openPoll = openPolls[slideId]
@@ -925,13 +954,17 @@ function ParticipantView({ slideId }: { slideId: string }) {
     }
   }, [])
 
-  const answer = (optionId: string) => {
+  const answer = async (optionId: string) => {
     if (!poll || selected || !isOpen) return
     const votes = readJson<VoteStore>(VOTES_KEY, {})
     votes[slideId] = votes[slideId] ?? {}
     votes[slideId][optionId] = (votes[slideId][optionId] ?? 0) + 1
     writeJson(VOTES_KEY, votes)
-    void incrementRemoteVote(slideId, optionId)
+    const saved = await incrementRemoteVote(slideId, optionId)
+    if (!saved && firebaseEnabled) {
+      setAnswerError('Не удалось отправить ответ. Обновите страницу и попробуйте еще раз.')
+      return
+    }
     localStorage.setItem(`poll-slide-studio.answer.${slideId}`, optionId)
     setSelected(optionId)
   }
@@ -967,11 +1000,12 @@ function ParticipantView({ slideId }: { slideId: string }) {
             <h1>{poll.question}</h1>
             <div className="mobile-options">
               {poll.options.map((option) => (
-                <button type="button" key={option.id} onClick={() => answer(option.id)}>
+                <button type="button" key={option.id} onClick={() => void answer(option.id)}>
                   {option.text}
                 </button>
               ))}
             </div>
+            {answerError && <p className="form-error">{answerError}</p>}
           </>
         ) : selected ? (
           <>

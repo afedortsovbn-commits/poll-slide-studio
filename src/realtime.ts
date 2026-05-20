@@ -129,12 +129,18 @@ export const subscribeRemoteVotes = (onChange: (votes: RemoteVoteStore) => void)
 
 export const incrementRemoteVote = async (slideId: string, optionId: string) => {
   const firestore = getDb()
-  if (!firestore) return
+  if (!firestore) return false
   const target = doc(firestore, 'pollSlideStudioVotes', slideId)
   try {
     await updateDoc(target, new FieldPath('counts', optionId), increment(1))
+    return true
   } catch {
-    await setDoc(target, { counts: { [optionId]: 1 } }, { merge: true })
+    try {
+      await setDoc(target, { counts: { [optionId]: 1 } }, { merge: true })
+      return true
+    } catch {
+      return false
+    }
   }
 }
 
