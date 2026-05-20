@@ -1,4 +1,5 @@
 import { initializeApp, type FirebaseApp } from 'firebase/app'
+import { getDatabase, onValue, ref, remove, runTransaction, type Database } from 'firebase/database'
 import {
   deleteDoc,
   deleteField,
@@ -32,6 +33,7 @@ const firebaseConfig = {
   storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  databaseURL: import.meta.env.VITE_FIREBASE_DATABASE_URL,
 }
 
 export const firebaseEnabled = Boolean(
@@ -43,16 +45,34 @@ export const firebaseEnabled = Boolean(
 
 let app: FirebaseApp | null = null
 let db: Firestore | null = null
+let realtimeDb: Database | null = null
+
+const getApp = () => {
+  if (!firebaseEnabled) return null
+  if (!app) app = initializeApp(firebaseConfig)
+  return app
+}
 
 const getDb = () => {
   if (!firebaseEnabled) return null
-  if (!app) {
-    app = initializeApp(firebaseConfig)
-    db = initializeFirestore(app, {
+  if (!db) {
+    const currentApp = getApp()
+    if (!currentApp) return null
+    db = initializeFirestore(currentApp, {
       experimentalForceLongPolling: true,
     })
   }
   return db
+}
+
+const getRealtimeDb = () => {
+  if (!firebaseEnabled || !firebaseConfig.databaseURL) return null
+  if (!realtimeDb) {
+    const currentApp = getApp()
+    if (!currentApp) return null
+    realtimeDb = getDatabase(currentApp)
+  }
+  return realtimeDb
 }
 
 const stateDoc = (name: string) => {
@@ -108,6 +128,19 @@ export const subscribeRemoteOpenPolls = (onChange: (openPolls: RemoteOpenPolls) 
   subscribeRemoteJson<RemoteOpenPolls>('openPolls', {}, onChange)
 
 export const subscribeRemoteVotes = (onChange: (votes: RemoteVoteStore) => void) => {
+  const realtime = getRealtimeDb()
+  if (realtime) {
+    let previous = ''
+    return onValue(ref(realtime, 'pollSlideStudioVotes'), (snapshot) => {
+      const votes = (snapshot.val() ?? {}) as RemoteVoteStore
+      const next = JSON.stringify(votes)
+      if (next !== previous) {
+        previous = next
+        onChange(votes)
+      }
+    })
+  }
+
   if (!firebaseEnabled) return () => undefined
   let previous = ''
   const target = stateDoc('votes')
@@ -124,6 +157,18 @@ export const subscribeRemoteVotes = (onChange: (votes: RemoteVoteStore) => void)
 }
 
 export const incrementRemoteVote = async (slideId: string, optionId: string) => {
+  const realtime = getRealtimeDb()
+  if (realtime) {
+    try {
+      await runTransaction(ref(realtime, `pollSlideStudioVotes/${slideId}/${optionId}`), (current) =>
+        typeof current === 'number' ? current + 1 : 1,
+      )
+      return true
+    } catch {
+      return false
+    }
+  }
+
   const firestore = getDb()
   if (!firestore) return false
   const target = doc(firestore, 'pollSlideStudio', 'votes')
@@ -141,6 +186,12 @@ export const incrementRemoteVote = async (slideId: string, optionId: string) => 
 }
 
 export const resetRemoteVotes = async (slideId?: string) => {
+  const realtime = getRealtimeDb()
+  if (realtime) {
+    await remove(ref(realtime, slideId ? `pollSlideStudioVotes/${slideId}` : 'pollSlideStudioVotes'))
+    return
+  }
+
   const firestore = getDb()
   if (!firestore) return
   const target = doc(firestore, 'pollSlideStudio', 'votes')
