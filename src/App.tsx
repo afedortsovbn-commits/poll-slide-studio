@@ -1043,6 +1043,7 @@ function ParticipantView({ slideId }: { slideId: string }) {
           <>
             <h1>Спасибо!</h1>
             {correct && <p>Правильный ответ: {correct}</p>}
+            {answerError && <p className="form-error">{answerError}</p>}
           </>
         ) : (
           <>
