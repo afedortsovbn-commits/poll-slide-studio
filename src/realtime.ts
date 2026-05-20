@@ -30,6 +30,9 @@ export type RemotePollSession = {
   poll: unknown
   isOpen: boolean
 }
+type SubscribeOptions = {
+  poll?: boolean
+}
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -137,7 +140,29 @@ const saveRemoteJson = async (name: string, value: unknown) => {
   }
 }
 
-const subscribeRemoteJson = <T,>(name: string, fallback: T, onChange: (value: T) => void, onError?: () => void) => {
+const readRemoteJson = async <T,>(name: string, fallback: T) => {
+  const realtimeUrls = realtimeStatePaths(name).map(realtimeRestUrl).filter(Boolean)
+  for (const realtimeUrl of realtimeUrls) {
+    try {
+      const response = await fetchWithTimeout(realtimeUrl, undefined, 60000)
+      if (!response.ok) continue
+      const data = await response.json()
+      if (!data) continue
+      return parseRemoteJson<T>(data, fallback)
+    } catch {
+      // Try the next compatible path.
+    }
+  }
+  return fallback
+}
+
+const subscribeRemoteJson = <T,>(
+  name: string,
+  fallback: T,
+  onChange: (value: T) => void,
+  onError?: () => void,
+  options: SubscribeOptions = { poll: true },
+) => {
   if (!firebaseEnabled) return () => undefined
   let previous = ''
   const realtimeUrls = realtimeStatePaths(name).map(realtimeRestUrl).filter(Boolean)
@@ -174,9 +199,14 @@ const subscribeRemoteJson = <T,>(name: string, fallback: T, onChange: (value: T)
       onError?.()
     }
     void read()
+    if (!options.poll) {
+      return () => {
+        stopped = true
+      }
+    }
     const interval = window.setInterval(() => {
       if (!stopped) void read()
-    }, 2000)
+    }, 5000)
     return () => {
       stopped = true
       window.clearInterval(interval)
@@ -210,8 +240,10 @@ export const saveRemotePresentation = async (presentation: RemotePresentation) =
   return saveRemoteJson('presentation', presentation)
 }
 
+export const readRemotePresentation = async () => readRemoteJson<RemotePresentation | null>('presentation', null)
+
 export const subscribeRemotePresentation = (onChange: (presentation: RemotePresentation | null) => void, onError?: () => void) =>
-  subscribeRemoteJson<RemotePresentation | null>('presentation', null, onChange, onError)
+  subscribeRemoteJson<RemotePresentation | null>('presentation', null, onChange, onError, { poll: false })
 
 export const saveRemoteOpenPolls = async (openPolls: RemoteOpenPolls) => {
   return saveRemoteJson('openPolls', openPolls)

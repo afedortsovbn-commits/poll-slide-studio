@@ -24,13 +24,13 @@ import {
 import {
   firebaseEnabled,
   incrementRemoteVote,
+  readRemotePresentation,
   readRemotePollSession,
   resetRemoteVotes,
   saveRemoteOpenPolls,
   saveRemotePollSession,
   saveRemotePresentation,
   subscribeRemoteOpenPolls,
-  subscribeRemotePresentation,
   subscribeRemoteVotes,
   type RemotePollSession,
   type RemoteOpenPolls,
@@ -934,25 +934,27 @@ function SpeakerView() {
 
   useEffect(() => {
     if (!firebaseEnabled) return undefined
-    const unsubscribePresentation = subscribeRemotePresentation(
-      (remotePresentation) => {
+    let active = true
+    void readRemotePresentation()
+      .then((remotePresentation) => {
+        if (!active) return
         if (remotePresentation) {
           setPresentation(remotePresentation as Presentation)
           writeJson(PRESENTATION_KEY, remotePresentation)
         }
         setRemotePresentationReady(true)
-      },
-      () => {
+      })
+      .catch(() => {
+        if (!active) return
         setRemotePresentationError(true)
         setRemotePresentationReady(true)
-      },
-    )
+      })
     const unsubscribeVotes = subscribeRemoteVotes((remoteVotes) => {
       setVotes(remoteVotes)
       writeJson(VOTES_KEY, remoteVotes)
     })
     return () => {
-      unsubscribePresentation()
+      active = false
       unsubscribeVotes()
     }
   }, [])
@@ -1215,19 +1217,21 @@ function ParticipantView({ slideId }: { slideId: string }) {
 
   useEffect(() => {
     if (!firebaseEnabled) return undefined
-    const unsubscribePresentation = subscribeRemotePresentation(
-      (remotePresentation) => {
+    let active = true
+    void readRemotePresentation()
+      .then((remotePresentation) => {
+        if (!active) return
         if (remotePresentation) {
           setPresentation(remotePresentation as Presentation)
           writeJson(PRESENTATION_KEY, remotePresentation)
         }
         setRemotePresentationReady(true)
-      },
-      () => {
+      })
+      .catch(() => {
+        if (!active) return
         setRemotePresentationError(true)
         setRemotePresentationReady(true)
-      },
-    )
+      })
     const unsubscribeOpenPolls = subscribeRemoteOpenPolls(
       (remoteOpenPolls) => {
         setOpenPolls(remoteOpenPolls)
@@ -1237,7 +1241,7 @@ function ParticipantView({ slideId }: { slideId: string }) {
       () => setRemoteOpenPollsReady(true),
     )
     return () => {
-      unsubscribePresentation()
+      active = false
       unsubscribeOpenPolls()
     }
   }, [])
