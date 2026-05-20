@@ -391,6 +391,10 @@ label {
   gap: calc(8px * var(--option-scale, 1));
 }
 
+.presenter-screen .answers-block {
+  width: 60%;
+}
+
 .answer-row {
   min-height: calc(34px * var(--option-scale, 1));
   display: grid;
@@ -629,6 +633,36 @@ label {
   font-weight: 750;
   overflow-wrap: anywhere;
   white-space: normal;
+}
+
+.next-qr {
+  display: grid;
+  gap: 14px;
+  width: 100%;
+}
+
+.mobile-scan-button {
+  width: 100%;
+  min-height: 58px;
+  justify-content: center;
+  font-size: 17px;
+}
+
+.scanner-frame {
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  max-height: 58vh;
+  overflow: hidden;
+  border-radius: 8px;
+  border: 1px solid #b8c9bf;
+  background: #07110d;
+}
+
+.scanner-frame video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 
 .transition-fade {

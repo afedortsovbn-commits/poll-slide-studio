@@ -37,6 +37,22 @@ import {
 } from './realtime'
 import './App.css'
 
+type DetectedBarcode = {
+  rawValue?: string
+}
+
+type BarcodeDetectorInstance = {
+  detect: (source: CanvasImageSource) => Promise<DetectedBarcode[]>
+}
+
+type BarcodeDetectorConstructor = new (options?: { formats?: string[] }) => BarcodeDetectorInstance
+
+declare global {
+  interface Window {
+    BarcodeDetector?: BarcodeDetectorConstructor
+  }
+}
+
 type Transition = 'fade' | 'slide' | 'zoom' | 'none'
 
 type PollOption = {
@@ -1085,6 +1101,92 @@ function SlideCanvas({
   )
 }
 
+function NextQrScanner() {
+  const [active, setActive] = useState(false)
+  const [error, setError] = useState('')
+  const videoRef = useRef<HTMLVideoElement>(null)
+
+  useEffect(() => {
+    if (!active) return undefined
+    let stopped = false
+    let frame = 0
+    let stream: MediaStream | null = null
+
+    const stop = () => {
+      stopped = true
+      if (frame) cancelAnimationFrame(frame)
+      stream?.getTracks().forEach((track) => track.stop())
+    }
+
+    const start = async () => {
+      setError('')
+      if (!window.BarcodeDetector) {
+        setError('Сканер QR-кодов не поддерживается этим браузером. Откройте следующий QR-код штатной камерой телефона.')
+        return
+      }
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setError('Браузер не дал доступ к камере. Откройте следующий QR-код штатной камерой телефона.')
+        return
+      }
+
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'environment' } },
+          audio: false,
+        })
+        const video = videoRef.current
+        if (!video) return
+        video.srcObject = stream
+        await video.play()
+        const detector = new window.BarcodeDetector({ formats: ['qr_code'] })
+
+        const scan = async () => {
+          if (stopped || !videoRef.current) return
+          try {
+            const codes = await detector.detect(videoRef.current)
+            const value = codes.find((code) => code.rawValue)?.rawValue
+            if (value) {
+              window.location.href = value
+              return
+            }
+          } catch {
+            setError('Не удалось распознать QR-код. Попробуйте навести камеру еще раз.')
+          }
+          frame = requestAnimationFrame(() => void scan())
+        }
+
+        frame = requestAnimationFrame(() => void scan())
+      } catch {
+        setError('Не удалось открыть камеру. Проверьте разрешение браузера или используйте штатную камеру телефона.')
+      }
+    }
+
+    void start()
+    return stop
+  }, [active])
+
+  return (
+    <div className="next-qr">
+      {!active ? (
+        <button className="primary mobile-scan-button" type="button" onClick={() => setActive(true)}>
+          <QrCode size={20} />
+          Отсканировать следующий QR-код
+        </button>
+      ) : (
+        <>
+          <div className="scanner-frame">
+            <video ref={videoRef} muted playsInline aria-label="Сканер QR-кодов" />
+          </div>
+          <button type="button" onClick={() => setActive(false)}>
+            Закрыть сканер
+          </button>
+        </>
+      )}
+      {error && <p className="form-error">{error}</p>}
+    </div>
+  )
+}
+
 function ParticipantView({ slideId }: { slideId: string }) {
   const [presentation, setPresentation] = useState(() => readJson(PRESENTATION_KEY, starterPresentation()))
   const [openPolls, setOpenPolls] = useState(() => readJson<RemoteOpenPolls>(OPEN_POLLS_KEY, {}))
@@ -1211,6 +1313,7 @@ function ParticipantView({ slideId }: { slideId: string }) {
           <>
             <h1>Спасибо!</h1>
             {correct && <p>Правильный ответ: {correct}</p>}
+            <NextQrScanner />
             {answerError && <p className="form-error">{answerError}</p>}
           </>
         ) : (
