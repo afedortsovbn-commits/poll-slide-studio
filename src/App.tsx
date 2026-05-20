@@ -65,6 +65,12 @@ type Presentation = {
 
 type VoteStore = Record<string, Record<string, number>>
 
+type PollUrlData = {
+  slideId: string
+  title: string
+  poll: Poll
+}
+
 type AuthState = {
   email: string
   password: string
@@ -181,9 +187,31 @@ const useStoredPresentation = () => {
   return { presentation, setPresentation, undo, canUndo: history.length > 0 }
 }
 
-const getPollUrl = (slideId: string) => {
+const encodePollUrlData = (value: PollUrlData) =>
+  btoa(encodeURIComponent(JSON.stringify(value))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+
+const decodePollUrlData = (value: string | null): PollUrlData | null => {
+  if (!value) return null
+  try {
+    const normalized = value.replace(/-/g, '+').replace(/_/g, '/')
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=')
+    return JSON.parse(decodeURIComponent(atob(padded))) as PollUrlData
+  } catch {
+    return null
+  }
+}
+
+const getPollUrl = (slide: Slide) => {
   const url = new URL(window.location.href)
-  url.hash = `poll/${slideId}`
+  url.searchParams.set(
+    'poll',
+    encodePollUrlData({
+      slideId: slide.id,
+      title: slide.title,
+      poll: slide.poll ?? starterPoll(),
+    }),
+  )
+  url.hash = `poll/${slide.id}`
   return url.toString()
 }
 
@@ -243,7 +271,7 @@ function App() {
   }, [])
 
   if (route.startsWith('poll/')) {
-    return <ParticipantView slideId={route.split('/')[1]} />
+    return <ParticipantView slideId={route.split('/')[1].split('?')[0]} />
   }
 
   if (route === 'present') {
@@ -837,7 +865,7 @@ function SlideCanvas({ slide, mode, votes }: { slide: Slide; mode: 'edit' | 'pre
           </div>
           {mode !== 'results' && (
             <div className="qr-box">
-              <QRCodeSVG value={getPollUrl(slide.id)} size={168} />
+              <QRCodeSVG value={getPollUrl(slide)} size={168} />
             </div>
           )}
         </>
@@ -852,14 +880,19 @@ function ParticipantView({ slideId }: { slideId: string }) {
   const [remotePresentationReady, setRemotePresentationReady] = useState(!firebaseEnabled)
   const [remoteOpenPollsReady, setRemoteOpenPollsReady] = useState(!firebaseEnabled)
   const [selected, setSelected] = useState<string | null>(() => localStorage.getItem(`poll-slide-studio.answer.${slideId}`))
+  const pollFromUrl = useMemo(() => {
+    const decoded = decodePollUrlData(new URLSearchParams(window.location.search).get('poll'))
+    return decoded?.slideId === slideId ? decoded.poll : undefined
+  }, [slideId])
   const slide = presentation.slides.find((item) => item.id === slideId)
   const openPoll = openPolls[slideId]
   const openPollPayload = openPoll && typeof openPoll === 'object' ? openPoll : null
   const openPollSlidePoll = openPollPayload?.poll as Poll | undefined
-  const poll = slide?.poll ?? openPollSlidePoll
+  const poll = slide?.poll ?? openPollSlidePoll ?? pollFromUrl
   const isOpen = Boolean(
     openPoll === true ||
-      (openPollPayload && openPollPayload.isOpen),
+      (openPollPayload && openPollPayload.isOpen) ||
+      pollFromUrl,
   )
 
   useEffect(() => {
@@ -903,7 +936,7 @@ function ParticipantView({ slideId }: { slideId: string }) {
     setSelected(optionId)
   }
 
-  if (!remotePresentationReady || !remoteOpenPollsReady) {
+  if (!pollFromUrl && (!remotePresentationReady || !remoteOpenPollsReady)) {
     return (
       <main className="participant-screen">
         <section className="participant-panel">
