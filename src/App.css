@@ -289,6 +289,15 @@ label {
   gap: 8px;
 }
 
+.publish-status {
+  color: #245245;
+  background: #eef5f0;
+  border-bottom: 1px solid #d5ddd8;
+  padding: 9px 18px;
+  font-size: 14px;
+  font-weight: 750;
+}
+
 .workbench {
   min-height: 0;
   height: calc(100vh - 64px);

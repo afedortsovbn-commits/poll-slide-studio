@@ -51,6 +51,7 @@ export const firebaseEnabled = Boolean(
 let app: FirebaseApp | null = null
 let db: Firestore | null = null
 let realtimeDb: Database | null = null
+const realtimeStatePath = (name: string) => `pollSlideStudioSessions/__state/${name}`
 
 const getApp = () => {
   if (!firebaseEnabled) return null
@@ -85,52 +86,97 @@ const stateDoc = (name: string) => {
   return firestore ? doc(firestore, 'pollSlideStudio', name) : null
 }
 
-const saveRemoteJson = async (name: string, value: unknown) => {
-  const target = stateDoc(name)
-  if (!target) return
-  await setDoc(target, { json: JSON.stringify(value), updatedAt: Date.now() })
+const parseRemoteJson = <T,>(data: unknown, fallback: T) => {
+  if (!data || typeof data !== 'object') return fallback
+  const record = data as { json?: unknown; value?: unknown }
+  if (typeof record.json === 'string') return JSON.parse(record.json) as T
+  if (record.value && typeof record.value === 'object') return record.value as T
+  return fallback
 }
 
-const subscribeRemoteJson = <T,>(name: string, fallback: T, onChange: (value: T) => void) => {
+const saveRemoteJson = async (name: string, value: unknown) => {
+  const realtime = getRealtimeDb()
+  if (realtime) {
+    try {
+      await set(ref(realtime, realtimeStatePath(name)), { json: JSON.stringify(value), updatedAt: Date.now() })
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  const target = stateDoc(name)
+  if (!target) return false
+  try {
+    await setDoc(target, { json: JSON.stringify(value), updatedAt: Date.now() })
+    return true
+  } catch {
+    return false
+  }
+}
+
+const subscribeRemoteJson = <T,>(name: string, fallback: T, onChange: (value: T) => void, onError?: () => void) => {
   if (!firebaseEnabled) return () => undefined
   let previous = ''
+  const realtime = getRealtimeDb()
+  if (realtime) {
+    return onValue(
+      ref(realtime, realtimeStatePath(name)),
+      (snapshot) => {
+        try {
+          const value = snapshot.exists() ? parseRemoteJson<T>(snapshot.val(), fallback) : fallback
+          const next = JSON.stringify(value)
+          if (next !== previous) {
+            previous = next
+            onChange(value)
+          }
+        } catch {
+          if (!previous) onChange(fallback)
+        }
+      },
+      () => {
+        onError?.()
+        if (!previous) onChange(fallback)
+      },
+    )
+  }
+
   const target = stateDoc(name)
   if (!target) return () => undefined
-  return onSnapshot(target, (snapshot) => {
-    try {
-      const data = snapshot.data()
-      const json = data?.json
-      const storedValue =
-        typeof json === 'string'
-          ? (JSON.parse(json) as T)
-          : data?.value && typeof data.value === 'object'
-            ? (data.value as T)
-            : fallback
-      const value = snapshot.exists() ? storedValue : fallback
-      const next = JSON.stringify(value)
-      if (next !== previous) {
-        previous = next
-        onChange(value)
+  return onSnapshot(
+    target,
+    (snapshot) => {
+      try {
+        const value = snapshot.exists() ? parseRemoteJson<T>(snapshot.data(), fallback) : fallback
+        const next = JSON.stringify(value)
+        if (next !== previous) {
+          previous = next
+          onChange(value)
+        }
+      } catch {
+        if (!previous) onChange(fallback)
       }
-    } catch {
+    },
+    () => {
+      onError?.()
       if (!previous) onChange(fallback)
-    }
-  })
+    },
+  )
 }
 
 export const saveRemotePresentation = async (presentation: RemotePresentation) => {
-  await saveRemoteJson('presentation', presentation)
+  return saveRemoteJson('presentation', presentation)
 }
 
-export const subscribeRemotePresentation = (onChange: (presentation: RemotePresentation | null) => void) =>
-  subscribeRemoteJson<RemotePresentation | null>('presentation', null, onChange)
+export const subscribeRemotePresentation = (onChange: (presentation: RemotePresentation | null) => void, onError?: () => void) =>
+  subscribeRemoteJson<RemotePresentation | null>('presentation', null, onChange, onError)
 
 export const saveRemoteOpenPolls = async (openPolls: RemoteOpenPolls) => {
-  await saveRemoteJson('openPolls', openPolls)
+  return saveRemoteJson('openPolls', openPolls)
 }
 
-export const subscribeRemoteOpenPolls = (onChange: (openPolls: RemoteOpenPolls) => void) =>
-  subscribeRemoteJson<RemoteOpenPolls>('openPolls', {}, onChange)
+export const subscribeRemoteOpenPolls = (onChange: (openPolls: RemoteOpenPolls) => void, onError?: () => void) =>
+  subscribeRemoteJson<RemoteOpenPolls>('openPolls', {}, onChange, onError)
 
 export const saveRemotePollSession = async (sessionId: string, session: RemotePollSession) => {
   const realtime = getRealtimeDb()

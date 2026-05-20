@@ -314,12 +314,38 @@ function NumericControl({
 function App() {
   const hash = window.location.hash.replace(/^#\/?/, '')
   const [route, setRoute] = useState(hash || 'admin')
+  const [runtimeError, setRuntimeError] = useState('')
 
   useEffect(() => {
     const onHash = () => setRoute(window.location.hash.replace(/^#\/?/, '') || 'admin')
     window.addEventListener('hashchange', onHash)
     return () => window.removeEventListener('hashchange', onHash)
   }, [])
+
+  useEffect(() => {
+    const onError = (event: ErrorEvent) => setRuntimeError(event.message || 'Не удалось открыть приложение.')
+    const onRejection = (event: PromiseRejectionEvent) => setRuntimeError(String(event.reason || 'Не удалось выполнить действие.'))
+    window.addEventListener('error', onError)
+    window.addEventListener('unhandledrejection', onRejection)
+    return () => {
+      window.removeEventListener('error', onError)
+      window.removeEventListener('unhandledrejection', onRejection)
+    }
+  }, [])
+
+  if (runtimeError) {
+    return (
+      <main className="auth-screen">
+        <section className="auth-panel">
+          <h1>Приложение не загрузилось</h1>
+          <p>{runtimeError}</p>
+          <button type="button" onClick={() => window.location.reload()}>
+            Обновить страницу
+          </button>
+        </section>
+      </main>
+    )
+  }
 
   if (route.startsWith('poll/')) {
     return <ParticipantView slideId={route.split('/')[1].split('?')[0]} />
@@ -447,6 +473,7 @@ function AdminView() {
   const [selectedSlideIds, setSelectedSlideIds] = useState<string[]>([])
   const [audioName, setAudioName] = useState(() => readJson<{ name: string; data: string } | null>(PRESENTATION_AUDIO_KEY, null)?.name ?? '')
   const [draggedSlideId, setDraggedSlideId] = useState<string | null>(null)
+  const [publishStatus, setPublishStatus] = useState('')
   const selected = presentation.slides.find((slide) => slide.id === selectedId) ?? presentation.slides[0]
   const fileInput = useRef<HTMLInputElement>(null)
   const audioInput = useRef<HTMLInputElement>(null)
@@ -582,6 +609,17 @@ function AdminView() {
     reader.readAsText(file)
   }
 
+  const publishPresentation = async () => {
+    writeJson(PRESENTATION_KEY, presentation)
+    setPublishStatus('Публикуем презентацию...')
+    const saved = await saveRemotePresentation(presentation)
+    setPublishStatus(
+      saved
+        ? 'Презентация опубликована для других устройств.'
+        : 'Не удалось опубликовать. Проверьте правила Realtime Database.',
+    )
+  }
+
   return (
     <main className="admin-shell">
       <aside className="slide-list">
@@ -660,6 +698,10 @@ function AdminView() {
             >
               <Save size={18} />
             </button>
+            <button className="primary small-primary" type="button" onClick={() => void publishPresentation()} title="Опубликовать для других устройств">
+              <Upload size={18} />
+              Опубликовать
+            </button>
             <button className="reset-action" type="button" onClick={() => resetVotes()} title="Обнулить все ответы">
               <RotateCcw size={18} />
             </button>
@@ -682,6 +724,7 @@ function AdminView() {
             onChange={(event) => importPresentation(event.target.files?.[0])}
           />
         </header>
+        {publishStatus && <div className="publish-status">{publishStatus}</div>}
 
         {selected && (
           <div className="workbench">
@@ -890,10 +933,13 @@ function SpeakerView() {
 
   useEffect(() => {
     if (!firebaseEnabled) return undefined
-    const unsubscribePresentation = subscribeRemotePresentation((remotePresentation) => {
-      if (remotePresentation) setPresentation(remotePresentation as Presentation)
-      setRemotePresentationReady(true)
-    })
+    const unsubscribePresentation = subscribeRemotePresentation(
+      (remotePresentation) => {
+        if (remotePresentation) setPresentation(remotePresentation as Presentation)
+        setRemotePresentationReady(true)
+      },
+      () => setRemotePresentationReady(true),
+    )
     const unsubscribeVotes = subscribeRemoteVotes((remoteVotes) => {
       setVotes(remoteVotes)
       writeJson(VOTES_KEY, remoteVotes)
@@ -1139,15 +1185,21 @@ function ParticipantView({ slideId }: { slideId: string }) {
 
   useEffect(() => {
     if (!firebaseEnabled) return undefined
-    const unsubscribePresentation = subscribeRemotePresentation((remotePresentation) => {
-      if (remotePresentation) setPresentation(remotePresentation as Presentation)
-      setRemotePresentationReady(true)
-    })
-    const unsubscribeOpenPolls = subscribeRemoteOpenPolls((remoteOpenPolls) => {
-      setOpenPolls(remoteOpenPolls)
-      writeJson(OPEN_POLLS_KEY, remoteOpenPolls)
-      setRemoteOpenPollsReady(true)
-    })
+    const unsubscribePresentation = subscribeRemotePresentation(
+      (remotePresentation) => {
+        if (remotePresentation) setPresentation(remotePresentation as Presentation)
+        setRemotePresentationReady(true)
+      },
+      () => setRemotePresentationReady(true),
+    )
+    const unsubscribeOpenPolls = subscribeRemoteOpenPolls(
+      (remoteOpenPolls) => {
+        setOpenPolls(remoteOpenPolls)
+        writeJson(OPEN_POLLS_KEY, remoteOpenPolls)
+        setRemoteOpenPollsReady(true)
+      },
+      () => setRemoteOpenPollsReady(true),
+    )
     return () => {
       unsubscribePresentation()
       unsubscribeOpenPolls()
