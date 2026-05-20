@@ -5,11 +5,13 @@ import {
   ArrowRight,
   Check,
   Circle,
+  Copy,
   Download,
   Eye,
   GripVertical,
   ImagePlus,
   Lock,
+  Music,
   Plus,
   QrCode,
   RotateCcw,
@@ -17,6 +19,7 @@ import {
   Trash2,
   Upload,
   UserPlus,
+  VolumeX,
 } from 'lucide-react'
 import {
   firebaseEnabled,
@@ -96,6 +99,7 @@ const AUTH_KEY = 'poll-slide-studio.auth'
 const AUTH_USERS_KEY = 'poll-slide-studio.auth-users'
 const SESSION_KEY = 'poll-slide-studio.session'
 const PRESENTATION_KEY = 'poll-slide-studio.presentation'
+const PRESENTATION_AUDIO_KEY = 'poll-slide-studio.presentation-audio'
 const VOTES_KEY = 'poll-slide-studio.votes'
 const OPEN_POLLS_KEY = 'poll-slide-studio.open-polls'
 const SAMPLE_POLL_SLIDE_ID = 'sample-poll-slide'
@@ -440,9 +444,12 @@ function AdminView() {
   const [presentation, setPresentation] = useState(savedPresentation)
   const [presentationBase, setPresentationBase] = useState(savedPresentation)
   const [selectedId, setSelectedId] = useState(presentation.slides[0]?.id)
+  const [selectedSlideIds, setSelectedSlideIds] = useState<string[]>([])
+  const [audioName, setAudioName] = useState(() => readJson<{ name: string; data: string } | null>(PRESENTATION_AUDIO_KEY, null)?.name ?? '')
   const [draggedSlideId, setDraggedSlideId] = useState<string | null>(null)
   const selected = presentation.slides.find((slide) => slide.id === selectedId) ?? presentation.slides[0]
   const fileInput = useRef<HTMLInputElement>(null)
+  const audioInput = useRef<HTMLInputElement>(null)
   const importInput = useRef<HTMLInputElement>(null)
   const isDirty = JSON.stringify(presentation) !== JSON.stringify(savedPresentation)
 
@@ -464,11 +471,46 @@ function AdminView() {
     setSelectedId(slide.id)
   }
 
+  const copySlide = (slideId: string) => {
+    const index = presentation.slides.findIndex((slide) => slide.id === slideId)
+    const source = presentation.slides[index]
+    if (!source) return
+    const optionIdMap = new Map(source.poll?.options.map((option) => [option.id, createId()]) ?? [])
+    const copy: Slide = {
+      ...source,
+      id: createId(),
+      title: `${source.title} - копия`,
+      poll: source.poll
+        ? {
+            ...source.poll,
+            options: source.poll.options.map((option) => ({ ...option, id: optionIdMap.get(option.id) ?? createId() })),
+            correctOptionId: source.poll.correctOptionId ? optionIdMap.get(source.poll.correctOptionId) : undefined,
+          }
+        : undefined,
+    }
+    const slides = [...presentation.slides]
+    slides.splice(index + 1, 0, copy)
+    setPresentation({ ...presentation, slides })
+    setSelectedId(copy.id)
+  }
+
   const deleteSlide = (slideId: string) => {
     const slides = presentation.slides.filter((slide) => slide.id !== slideId)
     if (!slides.length) return
     setPresentation({ ...presentation, slides })
     setSelectedId(slides[0].id)
+  }
+
+  const deleteSelectedSlides = () => {
+    if (!selectedSlideIds.length || selectedSlideIds.length >= presentation.slides.length) return
+    const slides = presentation.slides.filter((slide) => !selectedSlideIds.includes(slide.id))
+    setPresentation({ ...presentation, slides })
+    setSelectedSlideIds([])
+    setSelectedId(slides.find((slide) => slide.id === selectedId)?.id ?? slides[0].id)
+  }
+
+  const toggleSelectedSlide = (slideId: string) => {
+    setSelectedSlideIds((ids) => (ids.includes(slideId) ? ids.filter((id) => id !== slideId) : [...ids, slideId]))
   }
 
   const onImage = (file?: File) => {
@@ -478,6 +520,21 @@ function AdminView() {
       updateSlide(selected.id, (slide) => ({ ...slide, image: String(reader.result) }))
     }
     reader.readAsDataURL(file)
+  }
+
+  const onAudio = (file?: File) => {
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      writeJson(PRESENTATION_AUDIO_KEY, { name: file.name, data: String(reader.result) })
+      setAudioName(file.name)
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const removeAudio = () => {
+    localStorage.removeItem(PRESENTATION_AUDIO_KEY)
+    setAudioName('')
   }
 
   const updatePoll = (next: Poll) => {
@@ -539,24 +596,44 @@ function AdminView() {
           <Plus size={17} />
           Добавить слайд
         </button>
+        <button type="button" onClick={deleteSelectedSlides} disabled={!selectedSlideIds.length || selectedSlideIds.length >= presentation.slides.length}>
+          <Trash2 size={16} />
+          Удалить выбранные
+        </button>
         <div className="slides">
           {presentation.slides.map((slide, index) => (
-            <button
+            <div
               className={slide.id === selected?.id ? 'thumb active' : 'thumb'}
               key={slide.id}
-              type="button"
+              role="button"
+              tabIndex={0}
               draggable
               onDragStart={() => setDraggedSlideId(slide.id)}
               onDragOver={(event) => event.preventDefault()}
               onDrop={() => reorderSlide(slide.id)}
               onDragEnd={() => setDraggedSlideId(null)}
               onClick={() => setSelectedId(slide.id)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault()
+                  setSelectedId(slide.id)
+                }
+              }}
             >
+              <input
+                type="checkbox"
+                checked={selectedSlideIds.includes(slide.id)}
+                onChange={(event) => {
+                  event.stopPropagation()
+                  toggleSelectedSlide(slide.id)
+                }}
+                onClick={(event) => event.stopPropagation()}
+              />
               <GripVertical className="drag-marker" size={16} />
               <span>{index + 1}</span>
               <strong>{slide.title || 'Без названия'}</strong>
               <small>{slide.poll ? 'Опрос включен' : 'Без опроса'}</small>
-            </button>
+            </div>
           ))}
         </div>
       </aside>
@@ -646,17 +723,40 @@ function AdminView() {
                   Удалить изображение
                 </button>
               )}
+              <div className="media-control">
+                <strong>Музыка презентации</strong>
+                <button type="button" onClick={() => audioInput.current?.click()}>
+                  <Music size={18} />
+                  {audioName ? 'Заменить трек' : 'Добавить трек'}
+                </button>
+                {audioName && (
+                  <>
+                    <small>{audioName}</small>
+                    <button type="button" onClick={removeAudio}>
+                      <VolumeX size={18} />
+                      Удалить трек
+                    </button>
+                  </>
+                )}
+                <input hidden ref={audioInput} type="file" accept="audio/*" onChange={(event) => onAudio(event.target.files?.[0])} />
+              </div>
               <label className="checkbox-row">
                 <input type="checkbox" checked={Boolean(selected.poll)} onChange={(event) => togglePoll(event.target.checked)} />
                 Опрос
               </label>
-              <button type="button" onClick={() => deleteSlide(selected.id)} disabled={presentation.slides.length < 2}>
-                <Trash2 size={18} />
-                Удалить слайд
-              </button>
               {selected.poll && (
                 <PollBuilder poll={selected.poll} onChange={updatePoll} onReset={() => resetVotes(selected.id)} />
               )}
+              <div className="danger-zone">
+                <button type="button" onClick={() => copySlide(selected.id)}>
+                  <Copy size={18} />
+                  Создать копию слайда
+                </button>
+                <button className="danger-action" type="button" onClick={() => deleteSlide(selected.id)} disabled={presentation.slides.length < 2}>
+                  <Trash2 size={18} />
+                  Удалить слайд
+                </button>
+              </div>
             </aside>
           </div>
         )}
@@ -709,20 +809,6 @@ function PollBuilder({ poll, onChange, onReset }: { poll: Poll; onChange: (poll:
         Вопрос
         <textarea value={poll.question} onChange={(event) => onChange({ ...poll, question: event.target.value })} />
       </label>
-      <div className="range-grid">
-        <fieldset>
-          <legend>Вопрос</legend>
-          <NumericControl label="Размер" value={poll.questionScale} min={55} max={160} onChange={(value) => updateNumber('questionScale', value)} />
-          <NumericControl label="Смещение X" value={poll.questionX} min={0} max={70} onChange={(value) => updateNumber('questionX', value)} />
-          <NumericControl label="Смещение Y" value={poll.questionY} min={0} max={75} onChange={(value) => updateNumber('questionY', value)} />
-        </fieldset>
-        <fieldset>
-          <legend>Ответы</legend>
-          <NumericControl label="Размер" value={poll.optionScale} min={35} max={160} onChange={(value) => updateNumber('optionScale', value)} />
-          <NumericControl label="Смещение X" value={poll.optionsX} min={0} max={70} onChange={(value) => updateNumber('optionsX', value)} />
-          <NumericControl label="Смещение Y" value={poll.optionsY} min={12} max={82} onChange={(value) => updateNumber('optionsY', value)} />
-        </fieldset>
-      </div>
       <div className="option-list">
         {poll.options.map((option) => (
           <div
@@ -754,6 +840,23 @@ function PollBuilder({ poll, onChange, onReset }: { poll: Poll; onChange: (poll:
         <Plus size={16} />
         Добавить ответ
       </button>
+      <details className="range-details">
+        <summary>Размеры и расположение</summary>
+        <div className="range-grid">
+          <fieldset>
+            <legend>Вопрос</legend>
+            <NumericControl label="Размер" value={poll.questionScale} min={55} max={160} onChange={(value) => updateNumber('questionScale', value)} />
+            <NumericControl label="Смещение X" value={poll.questionX} min={0} max={70} onChange={(value) => updateNumber('questionX', value)} />
+            <NumericControl label="Смещение Y" value={poll.questionY} min={0} max={75} onChange={(value) => updateNumber('questionY', value)} />
+          </fieldset>
+          <fieldset>
+            <legend>Ответы</legend>
+            <NumericControl label="Размер" value={poll.optionScale} min={35} max={160} onChange={(value) => updateNumber('optionScale', value)} />
+            <NumericControl label="Смещение X" value={poll.optionsX} min={0} max={70} onChange={(value) => updateNumber('optionsX', value)} />
+            <NumericControl label="Смещение Y" value={poll.optionsY} min={12} max={82} onChange={(value) => updateNumber('optionsY', value)} />
+          </fieldset>
+        </div>
+      </details>
     </div>
   )
 }
@@ -763,15 +866,19 @@ function SpeakerView() {
   const [votes, setVotes] = useState(() => readJson<VoteStore>(VOTES_KEY, {}))
   const [remotePresentationReady, setRemotePresentationReady] = useState(!firebaseEnabled)
   const [pollSessions, setPollSessions] = useState<Record<string, string>>({})
+  const [audio, setAudio] = useState(() => readJson<{ name: string; data: string } | null>(PRESENTATION_AUDIO_KEY, null))
+  const [musicPlaying, setMusicPlaying] = useState(false)
   const [index, setIndex] = useState(0)
   const [showResults, setShowResults] = useState(false)
   const previousOpenPollKey = useRef('')
+  const audioRef = useRef<HTMLAudioElement>(null)
   const slide = presentation.slides[index]
 
   useEffect(() => {
     const sync = () => {
       setPresentation(readJson(PRESENTATION_KEY, starterPresentation()))
       setVotes(readJson(VOTES_KEY, {}))
+      setAudio(readJson(PRESENTATION_AUDIO_KEY, null))
     }
     window.addEventListener('storage', sync)
     window.addEventListener('poll-slide-studio-storage', sync)
@@ -844,6 +951,19 @@ function SpeakerView() {
     setIndex((value) => Math.max(value - 1, 0))
   }
 
+  const toggleMusic = () => {
+    const player = audioRef.current
+    if (!player || !audio) return
+    if (musicPlaying) {
+      player.pause()
+      player.currentTime = 0
+      setMusicPlaying(false)
+      return
+    }
+    player.currentTime = 0
+    void player.play().then(() => setMusicPlaying(true)).catch(() => setMusicPlaying(false))
+  }
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (['ArrowRight', 'PageDown', ' ', 'Enter'].includes(event.key)) {
@@ -853,6 +973,10 @@ function SpeakerView() {
       if (['ArrowLeft', 'PageUp', 'Backspace'].includes(event.key)) {
         event.preventDefault()
         previous()
+      }
+      if (['b', 'B', '.', 'MediaPlayPause'].includes(event.key)) {
+        event.preventDefault()
+        toggleMusic()
       }
     }
     window.addEventListener('keydown', onKey)
@@ -880,7 +1004,13 @@ function SpeakerView() {
         <button type="button" onClick={next}>
           <ArrowRight size={20} />
         </button>
+        {audio && (
+          <button type="button" onClick={toggleMusic} title="Включить или выключить музыку">
+            {musicPlaying ? <VolumeX size={20} /> : <Music size={20} />}
+          </button>
+        )}
       </div>
+      {audio && <audio ref={audioRef} src={audio.data} onEnded={() => setMusicPlaying(false)} />}
     </main>
   )
 }
@@ -946,7 +1076,7 @@ function SlideCanvas({
           </div>
           {mode !== 'results' && (
             <div className="qr-box">
-              <QRCodeSVG value={getPollUrl(slide, pollSession)} size={168} />
+              <QRCodeSVG value={getPollUrl(slide, pollSession)} size={240} />
             </div>
           )}
         </>

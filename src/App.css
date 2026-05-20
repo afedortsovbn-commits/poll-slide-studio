@@ -198,9 +198,10 @@ label {
   min-height: 74px;
   justify-content: flex-start;
   display: grid;
-  grid-template-columns: 18px 28px 1fr;
+  grid-template-columns: 18px 18px 28px 1fr;
   grid-template-rows: auto auto;
   text-align: left;
+  cursor: pointer;
 }
 
 .drag-marker {
@@ -208,9 +209,21 @@ label {
   align-self: center;
 }
 
-.thumb span {
+.thumb input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  align-self: center;
+  accent-color: #1f7a5a;
+}
+
+.thumb .drag-marker {
   grid-row: 1 / 3;
   grid-column: 2;
+}
+
+.thumb span {
+  grid-row: 1 / 3;
+  grid-column: 3;
   width: 24px;
   height: 24px;
   border-radius: 50%;
@@ -221,8 +234,12 @@ label {
   font-size: 12px;
 }
 
+.thumb strong {
+  grid-column: 4;
+}
+
 .thumb small {
-  grid-column: 3;
+  grid-column: 4;
   color: #6d8174;
 }
 
@@ -401,12 +418,22 @@ label {
 
 .qr-box {
   position: absolute;
-  right: 3.2%;
+  right: 3.4%;
   top: 4%;
   background: #ffffff;
-  padding: 14px;
+  padding: 16px;
   border-radius: 8px;
   box-shadow: 0 10px 28px rgba(23, 32, 29, 0.16);
+}
+
+.qr-box svg {
+  width: min(22cqw, 270px);
+  height: auto;
+  display: block;
+}
+
+.presenter-screen .qr-box svg {
+  width: min(23cqw, 300px);
 }
 
 .poll-builder {
@@ -440,6 +467,61 @@ label {
   padding: 0 6px;
   color: #17201d;
   font-weight: 800;
+}
+
+.range-details {
+  border: 1px solid #d5ddd8;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.range-details summary {
+  cursor: pointer;
+  padding: 11px 12px;
+  color: #17201d;
+  font-weight: 800;
+}
+
+.range-details[open] summary {
+  border-bottom: 1px solid #d5ddd8;
+}
+
+.range-details .range-grid {
+  padding: 12px;
+}
+
+.media-control {
+  display: grid;
+  gap: 9px;
+  padding: 12px;
+  border: 1px solid #d5ddd8;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.media-control small {
+  color: #51675b;
+  overflow-wrap: anywhere;
+}
+
+.danger-zone {
+  display: grid;
+  gap: 9px;
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid #d5ddd8;
+}
+
+.danger-action {
+  color: #8a1f1f;
+  background: #fff1f1;
+  border-color: #efb3b3;
+}
+
+.danger-action:hover:not(:disabled) {
+  color: #651313;
+  background: #ffe3e3;
+  border-color: #dc6e6e;
 }
 
 .numeric-control > div {
