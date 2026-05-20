@@ -582,6 +582,11 @@ function AdminView() {
     reader.readAsText(file)
   }
 
+  const publishPresentation = () => {
+    writeJson(PRESENTATION_KEY, presentation)
+    void saveRemotePresentation(presentation)
+  }
+
   return (
     <main className="admin-shell">
       <aside className="slide-list">
@@ -600,7 +605,13 @@ function AdminView() {
           <Trash2 size={16} />
           Удалить выбранные
         </button>
-        <div className="slides">
+        <div
+          className="slides"
+          onWheel={(event) => {
+            event.preventDefault()
+            event.currentTarget.scrollTop -= event.deltaY
+          }}
+        >
           {presentation.slides.map((slide, index) => (
             <div
               className={slide.id === selected?.id ? 'thumb active' : 'thumb'}
@@ -659,6 +670,10 @@ function AdminView() {
               title="Сохранить"
             >
               <Save size={18} />
+            </button>
+            <button className="primary small-primary" type="button" onClick={publishPresentation} title="Опубликовать для других устройств">
+              <Upload size={18} />
+              Опубликовать
             </button>
             <button className="reset-action" type="button" onClick={() => resetVotes()} title="Обнулить все ответы">
               <RotateCcw size={18} />

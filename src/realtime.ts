@@ -86,6 +86,12 @@ const stateDoc = (name: string) => {
 }
 
 const saveRemoteJson = async (name: string, value: unknown) => {
+  const realtime = getRealtimeDb()
+  if (realtime) {
+    await set(ref(realtime, `pollSlideStudioState/${name}`), { json: JSON.stringify(value), updatedAt: Date.now() })
+    return
+  }
+
   const target = stateDoc(name)
   if (!target) return
   await setDoc(target, { json: JSON.stringify(value), updatedAt: Date.now() })
@@ -94,6 +100,30 @@ const saveRemoteJson = async (name: string, value: unknown) => {
 const subscribeRemoteJson = <T,>(name: string, fallback: T, onChange: (value: T) => void) => {
   if (!firebaseEnabled) return () => undefined
   let previous = ''
+  const realtime = getRealtimeDb()
+  if (realtime) {
+    return onValue(ref(realtime, `pollSlideStudioState/${name}`), (snapshot) => {
+      try {
+        const data = snapshot.val()
+        const json = data?.json
+        const storedValue =
+          typeof json === 'string'
+            ? (JSON.parse(json) as T)
+            : data?.value && typeof data.value === 'object'
+              ? (data.value as T)
+              : fallback
+        const value = snapshot.exists() ? storedValue : fallback
+        const next = JSON.stringify(value)
+        if (next !== previous) {
+          previous = next
+          onChange(value)
+        }
+      } catch {
+        if (!previous) onChange(fallback)
+      }
+    })
+  }
+
   const target = stateDoc(name)
   if (!target) return () => undefined
   return onSnapshot(target, (snapshot) => {
