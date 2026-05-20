@@ -907,12 +907,14 @@ function ParticipantView({ slideId }: { slideId: string }) {
   const [openPolls, setOpenPolls] = useState(() => readJson<RemoteOpenPolls>(OPEN_POLLS_KEY, {}))
   const [remotePresentationReady, setRemotePresentationReady] = useState(!firebaseEnabled)
   const [remoteOpenPollsReady, setRemoteOpenPollsReady] = useState(!firebaseEnabled)
-  const [selected, setSelected] = useState<string | null>(() => localStorage.getItem(`poll-slide-studio.answer.${slideId}`))
+  const pollParam = new URLSearchParams(window.location.search).get('poll')
+  const answerKey = `poll-slide-studio.answer.${slideId}.${pollParam ?? 'live'}`
+  const [selected, setSelected] = useState<string | null>(() => localStorage.getItem(answerKey))
   const [answerError, setAnswerError] = useState('')
   const pollFromUrl = useMemo(() => {
-    const decoded = decodePollUrlData(new URLSearchParams(window.location.search).get('poll'))
+    const decoded = decodePollUrlData(pollParam)
     return decoded?.s === slideId ? pollFromUrlData(decoded) : undefined
-  }, [slideId])
+  }, [pollParam, slideId])
   const slide = presentation.slides.find((item) => item.id === slideId)
   const openPoll = openPolls[slideId]
   const openPollPayload = openPoll && typeof openPoll === 'object' ? openPoll : null
@@ -965,7 +967,7 @@ function ParticipantView({ slideId }: { slideId: string }) {
       setAnswerError('Не удалось отправить ответ. Обновите страницу и попробуйте еще раз.')
       return
     }
-    localStorage.setItem(`poll-slide-studio.answer.${slideId}`, optionId)
+    localStorage.setItem(answerKey, optionId)
     setSelected(optionId)
   }
 
