@@ -144,10 +144,12 @@ const subscribeRemoteJson = <T,>(name: string, fallback: T, onChange: (value: T)
   if (realtimeUrls.length) {
     let stopped = false
     const read = async () => {
+      let hadReadablePath = false
       for (const realtimeUrl of realtimeUrls) {
         try {
-          const response = await fetchWithTimeout(realtimeUrl, undefined, 8000)
+          const response = await fetchWithTimeout(realtimeUrl, undefined, 60000)
           if (!response.ok) continue
+          hadReadablePath = true
           const data = await response.json()
           if (!data) continue
           const value = parseRemoteJson<T>(data, fallback)
@@ -161,8 +163,15 @@ const subscribeRemoteJson = <T,>(name: string, fallback: T, onChange: (value: T)
           // Try the next compatible path before falling back.
         }
       }
+      if (hadReadablePath) {
+        const next = JSON.stringify(fallback)
+        if (next !== previous) {
+          previous = next
+          onChange(fallback)
+        }
+        return
+      }
       onError?.()
-      if (!previous) onChange(fallback)
     }
     void read()
     const interval = window.setInterval(() => {

@@ -908,6 +908,7 @@ function SpeakerView() {
   const [presentation, setPresentation] = useState(() => readJson(PRESENTATION_KEY, starterPresentation()))
   const [votes, setVotes] = useState(() => readJson<VoteStore>(VOTES_KEY, {}))
   const [remotePresentationReady, setRemotePresentationReady] = useState(!firebaseEnabled)
+  const [remotePresentationError, setRemotePresentationError] = useState(false)
   const [pollSessions, setPollSessions] = useState<Record<string, string>>({})
   const [audio, setAudio] = useState(() => readJson<{ name: string; data: string } | null>(PRESENTATION_AUDIO_KEY, null))
   const [musicPlaying, setMusicPlaying] = useState(false)
@@ -935,10 +936,16 @@ function SpeakerView() {
     if (!firebaseEnabled) return undefined
     const unsubscribePresentation = subscribeRemotePresentation(
       (remotePresentation) => {
-        if (remotePresentation) setPresentation(remotePresentation as Presentation)
+        if (remotePresentation) {
+          setPresentation(remotePresentation as Presentation)
+          writeJson(PRESENTATION_KEY, remotePresentation)
+        }
         setRemotePresentationReady(true)
       },
-      () => setRemotePresentationReady(true),
+      () => {
+        setRemotePresentationError(true)
+        setRemotePresentationReady(true)
+      },
     )
     const unsubscribeVotes = subscribeRemoteVotes((remoteVotes) => {
       setVotes(remoteVotes)
@@ -1028,6 +1035,28 @@ function SpeakerView() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   })
+
+  if (!remotePresentationReady) {
+    return (
+      <main className="presenter-screen">
+        <section className="presenter-message">
+          <h1>Загрузка презентации</h1>
+          <p>Получаем опубликованную версию из базы.</p>
+        </section>
+      </main>
+    )
+  }
+
+  if (remotePresentationError) {
+    return (
+      <main className="presenter-screen">
+        <section className="presenter-message">
+          <h1>Не удалось загрузить презентацию</h1>
+          <p>Проверьте подключение и правила Realtime Database.</p>
+        </section>
+      </main>
+    )
+  }
 
   if (!slide) return null
 
@@ -1136,6 +1165,7 @@ function ParticipantView({ slideId }: { slideId: string }) {
   const [openPolls, setOpenPolls] = useState(() => readJson<RemoteOpenPolls>(OPEN_POLLS_KEY, {}))
   const [remotePresentationReady, setRemotePresentationReady] = useState(!firebaseEnabled)
   const [remoteOpenPollsReady, setRemoteOpenPollsReady] = useState(!firebaseEnabled)
+  const [remotePresentationError, setRemotePresentationError] = useState(false)
   const pollParam = new URLSearchParams(window.location.search).get('poll')
   const answerKey = `poll-slide-studio.answer.${slideId}.${pollParam ?? 'live'}`
   const [selected, setSelected] = useState<string | null>(() => localStorage.getItem(answerKey))
@@ -1187,10 +1217,16 @@ function ParticipantView({ slideId }: { slideId: string }) {
     if (!firebaseEnabled) return undefined
     const unsubscribePresentation = subscribeRemotePresentation(
       (remotePresentation) => {
-        if (remotePresentation) setPresentation(remotePresentation as Presentation)
+        if (remotePresentation) {
+          setPresentation(remotePresentation as Presentation)
+          writeJson(PRESENTATION_KEY, remotePresentation)
+        }
         setRemotePresentationReady(true)
       },
-      () => setRemotePresentationReady(true),
+      () => {
+        setRemotePresentationError(true)
+        setRemotePresentationReady(true)
+      },
     )
     const unsubscribeOpenPolls = subscribeRemoteOpenPolls(
       (remoteOpenPolls) => {
@@ -1227,6 +1263,17 @@ function ParticipantView({ slideId }: { slideId: string }) {
         <section className="participant-panel">
           <h1>Загрузка опроса</h1>
           <p>Подключаемся к презентации.</p>
+        </section>
+      </main>
+    )
+  }
+
+  if (remotePresentationError && !pollFromUrl && !remotePollSession) {
+    return (
+      <main className="participant-screen">
+        <section className="participant-panel">
+          <h1>Опрос недоступен</h1>
+          <p>Не удалось загрузить опубликованную презентацию.</p>
         </section>
       </main>
     )

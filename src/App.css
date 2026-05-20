@@ -369,6 +369,20 @@ label {
   box-shadow: none;
 }
 
+.presenter-message {
+  color: #ffffff;
+  display: grid;
+  gap: 12px;
+  max-width: 560px;
+  padding: 28px;
+  text-align: center;
+}
+
+.presenter-message h1,
+.presenter-message p {
+  margin: 0;
+}
+
 .slide-bg,
 .placeholder-bg {
   position: absolute;
