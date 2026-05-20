@@ -386,7 +386,7 @@ label {
 
 .answers-block {
   position: absolute;
-  width: 66%;
+  width: 60%;
   display: grid;
   gap: calc(8px * var(--option-scale, 1));
 }
