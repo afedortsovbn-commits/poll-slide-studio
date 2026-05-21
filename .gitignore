@@ -12,6 +12,10 @@ dist
 dist-ssr
 *.local
 
+# Local audio files must not be published accidentally.
+public/audio/presentation-track.mp3
+docs/audio/presentation-track.mp3
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
