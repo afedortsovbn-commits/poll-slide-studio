@@ -1,6 +1,7 @@
 const databaseUrl = 'https://poll-slide-studio-default-rtdb.europe-west1.firebasedatabase.app'
 const totalVotes = Number(process.argv[2] ?? 200)
 const concurrency = Number(process.argv[3] ?? totalVotes)
+const mode = process.argv[4] ?? 'round-robin'
 
 const jsonUrl = (path) => `${databaseUrl}/${path}.json`
 
@@ -17,7 +18,7 @@ const parseStateValue = (data, fallback) => {
   return fallback
 }
 
-const incrementWithRetry = async (path, retries = 12) => {
+const incrementWithRetry = async (path, retries = 40) => {
   for (let attempt = 0; attempt < retries; attempt += 1) {
     try {
       const currentResponse = await fetch(jsonUrl(path), {
@@ -40,7 +41,7 @@ const incrementWithRetry = async (path, retries = 12) => {
     } catch (error) {
       if (attempt === retries - 1) throw error
     }
-    await new Promise((resolve) => setTimeout(resolve, 60 + attempt * 35))
+    await new Promise((resolve) => setTimeout(resolve, 80 + attempt * 45))
   }
   return false
 }
@@ -83,7 +84,7 @@ const beforeTotal = sumSlideVotes(beforeVotes, slideId)
 const startedAt = Date.now()
 
 const voteItems = Array.from({ length: totalVotes }, (_, index) => {
-  const option = options[index % options.length]
+  const option = mode === 'same-option' ? options[0] : options[index % options.length]
   return option
 })
 
@@ -103,6 +104,8 @@ console.log(JSON.stringify({
   question: activePoll.poll?.question ?? activePoll.title ?? '',
   requestedVotes: totalVotes,
   concurrency,
+  mode,
+  targetOption: mode === 'same-option' ? options[0]?.text : null,
   successfulRequests: results.length - failed.length,
   failedRequests: failed.length,
   beforeTotal,

@@ -359,14 +359,17 @@ export const subscribeRemoteVotes = (onChange: (votes: RemoteVoteStore) => void)
 export const incrementRemoteVote = async (slideId: string, optionId: string) => {
   const realtime = getRealtimeDb()
   if (realtime) {
-    try {
-      await runTransaction(ref(realtime, `pollSlideStudioVotes/${slideId}/${optionId}`), (current) =>
-        typeof current === 'number' ? current + 1 : 1,
-      )
-      return true
-    } catch {
-      return false
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      try {
+        await runTransaction(ref(realtime, `pollSlideStudioVotes/${slideId}/${optionId}`), (current) =>
+          typeof current === 'number' ? current + 1 : 1,
+        )
+        return true
+      } catch {
+        await new Promise((resolve) => window.setTimeout(resolve, 120 + attempt * 180))
+      }
     }
+    return false
   }
 
   const firestore = getDb()
