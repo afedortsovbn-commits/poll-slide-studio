@@ -70,6 +70,11 @@ type Presentation = {
   slides: Slide[]
 }
 
+type PresentationAudio = {
+  name: string
+  data: string
+}
+
 type VoteStore = Record<string, Record<string, number>>
 
 type PollUrlData = {
@@ -102,6 +107,10 @@ const SESSION_KEY = 'poll-slide-studio.session'
 const PRESENTATION_KEY = 'poll-slide-studio.presentation'
 const PRESENTATION_CACHE_KEY = 'poll-slide-studio.presentation-cache'
 const PRESENTATION_AUDIO_KEY = 'poll-slide-studio.presentation-audio'
+const SERVER_AUDIO: PresentationAudio = {
+  name: 'Серверный трек',
+  data: `${import.meta.env.BASE_URL}audio/presentation-track.mp3`,
+}
 const VOTES_KEY = 'poll-slide-studio.votes'
 const OPEN_POLLS_KEY = 'poll-slide-studio.open-polls'
 const SAMPLE_POLL_SLIDE_ID = 'sample-poll-slide'
@@ -478,7 +487,7 @@ function AdminView() {
   const [presentationBase, setPresentationBase] = useState(savedPresentation)
   const [selectedId, setSelectedId] = useState(presentation.slides[0]?.id)
   const [selectedSlideIds, setSelectedSlideIds] = useState<string[]>([])
-  const [audioName, setAudioName] = useState(() => readJson<{ name: string; data: string } | null>(PRESENTATION_AUDIO_KEY, null)?.name ?? '')
+  const [audioName, setAudioName] = useState(() => readJson<PresentationAudio | null>(PRESENTATION_AUDIO_KEY, null)?.name ?? '')
   const [draggedSlideId, setDraggedSlideId] = useState<string | null>(null)
   const [publishStatus, setPublishStatus] = useState('')
   const selected = presentation.slides.find((slide) => slide.id === selectedId) ?? presentation.slides[0]
@@ -775,6 +784,7 @@ function AdminView() {
               )}
               <div className="media-control">
                 <strong>Музыка презентации</strong>
+                <small>Серверный трек доступен в показе для всех презентаций. Локальная загрузка заменяет его только на этом устройстве.</small>
                 <button type="button" onClick={() => audioInput.current?.click()}>
                   <Music size={18} />
                   {audioName ? 'Заменить трек' : 'Добавить трек'}
@@ -917,7 +927,7 @@ function SpeakerView() {
   const [remotePresentationReady, setRemotePresentationReady] = useState(() => Boolean(readJson<Presentation | null>(PRESENTATION_CACHE_KEY, null)) || !firebaseEnabled)
   const [remotePresentationError, setRemotePresentationError] = useState(false)
   const [pollSessions, setPollSessions] = useState<Record<string, string>>({})
-  const [audio, setAudio] = useState(() => readJson<{ name: string; data: string } | null>(PRESENTATION_AUDIO_KEY, null))
+  const [audio, setAudio] = useState(() => readJson<PresentationAudio | null>(PRESENTATION_AUDIO_KEY, null) ?? SERVER_AUDIO)
   const [musicPlaying, setMusicPlaying] = useState(false)
   const [index, setIndex] = useState(0)
   const [showResults, setShowResults] = useState(false)
@@ -928,7 +938,7 @@ function SpeakerView() {
   useEffect(() => {
     const sync = () => {
       setVotes(readJson(VOTES_KEY, {}))
-      setAudio(readJson(PRESENTATION_AUDIO_KEY, null))
+      setAudio(readJson(PRESENTATION_AUDIO_KEY, null) ?? SERVER_AUDIO)
     }
     window.addEventListener('storage', sync)
     window.addEventListener('poll-slide-studio-storage', sync)
