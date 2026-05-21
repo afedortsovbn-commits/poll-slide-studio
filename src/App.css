@@ -450,13 +450,13 @@ label {
 }
 
 .qr-box svg {
-  width: min(22cqw, 270px);
+  width: min(24.2cqw, 297px);
   height: auto;
   display: block;
 }
 
 .presenter-screen .qr-box svg {
-  width: min(23cqw, 300px);
+  width: min(25.3cqw, 330px);
 }
 
 .poll-builder {
