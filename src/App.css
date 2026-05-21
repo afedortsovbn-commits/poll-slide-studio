@@ -426,7 +426,7 @@ label {
   border: 1px solid rgba(18, 76, 63, 0.16);
   color: #12211b;
   font-size: calc(clamp(10px, 1.55cqw, 30px) * var(--option-scale, 1));
-  font-weight: 750;
+  font-weight: 500;
   line-height: 1.08;
 }
 

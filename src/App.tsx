@@ -114,6 +114,7 @@ const SERVER_AUDIO: PresentationAudio = {
 const VOTES_KEY = 'poll-slide-studio.votes'
 const OPEN_POLLS_KEY = 'poll-slide-studio.open-polls'
 const SAMPLE_POLL_SLIDE_ID = 'sample-poll-slide'
+const DEFAULT_USER_ID = 'default'
 
 const createId = () => crypto.randomUUID()
 
@@ -192,17 +193,25 @@ const writeAuthStore = (store: AuthStore) => {
   writeJson(AUTH_USERS_KEY, store)
 }
 
-const useStoredPresentation = () => {
+const userIdFromEmail = (email: string) => toBase64Url(email.trim().toLowerCase()).slice(0, 48) || DEFAULT_USER_ID
+
+const presentationKeyForUser = (userId: string) => `${PRESENTATION_KEY}.${userId}`
+const presentationCacheKeyForUser = (userId: string) => `${PRESENTATION_CACHE_KEY}.${userId}`
+const votesKeyForUser = (userId: string) => `${VOTES_KEY}.${userId}`
+const openPollsKeyForUser = (userId: string) => `${OPEN_POLLS_KEY}.${userId}`
+
+const useStoredPresentation = (userId: string) => {
+  const presentationKey = presentationKeyForUser(userId)
   const [presentation, setPresentationState] = useState<Presentation>(() =>
-    readJson(PRESENTATION_KEY, starterPresentation()),
+    readJson(presentationKey, readJson(PRESENTATION_KEY, starterPresentation())),
   )
   const [history, setHistory] = useState<Presentation[]>([])
 
   const setPresentation = (next: Presentation) => {
     setHistory((items) => [presentation, ...items].slice(0, 3))
     setPresentationState(next)
-    writeJson(PRESENTATION_KEY, next)
-    void saveRemotePresentation(next)
+    writeJson(presentationKey, next)
+    void saveRemotePresentation(next, userId)
   }
 
   const undo = () => {
@@ -210,8 +219,8 @@ const useStoredPresentation = () => {
     if (!previous) return
     setHistory(rest)
     setPresentationState(previous)
-    writeJson(PRESENTATION_KEY, previous)
-    void saveRemotePresentation(previous)
+    writeJson(presentationKey, previous)
+    void saveRemotePresentation(previous, userId)
   }
 
   return { presentation, setPresentation, undo, canUndo: history.length > 0 }
@@ -264,9 +273,10 @@ const shortPollDataFromParam = (value: string | null): ShortPollUrlData | null =
 
 const createPollSession = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 
-const getPollUrl = (slide: Slide, pollSession?: string) => {
+const getPollUrl = (slide: Slide, pollSession?: string, userId = DEFAULT_USER_ID) => {
   const poll = slide.poll ?? starterPoll()
   const url = new URL(window.location.href)
+  url.searchParams.set('u', userId)
   url.searchParams.set(
     'poll',
     pollSession
@@ -367,8 +377,8 @@ function App() {
     return <ParticipantView slideId={route.split('/')[1].split('?')[0]} />
   }
 
-  if (route === 'present') {
-    return <SpeakerView />
+  if (route === 'present' || route.startsWith('present/')) {
+    return <SpeakerView userId={route.split('/')[1] || DEFAULT_USER_ID} />
   }
 
   return <AdminGate />
@@ -376,7 +386,7 @@ function App() {
 
 function AdminGate() {
   const [authStore, setAuthStore] = useState<AuthStore>(() => readAuthStore())
-  const [session, setSession] = useState(() => localStorage.getItem(SESSION_KEY) === '1')
+  const [sessionEmail, setSessionEmail] = useState(() => localStorage.getItem(SESSION_KEY) ?? '')
   const [mode, setMode] = useState<'login' | 'register'>(() => (readAuthStore().users.length ? 'login' : 'register'))
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -398,21 +408,22 @@ function AdminGate() {
       const next = { email, password }
       const nextStore = { users: [...authStore.users, next] }
       writeAuthStore(nextStore)
-      localStorage.setItem(SESSION_KEY, '1')
+      localStorage.setItem(SESSION_KEY, email)
       setAuthStore(nextStore)
-      setSession(true)
+      setSessionEmail(email)
       return
     }
 
     if (authStore.users.some((user) => user.email === email && user.password === password)) {
-      localStorage.setItem(SESSION_KEY, '1')
-      setSession(true)
+      localStorage.setItem(SESSION_KEY, email)
+      setSessionEmail(email)
       return
     }
     setError('Неверный логин или пароль.')
   }
 
-  if (session && hasUsers) return <AdminView />
+  const currentUser = authStore.users.find((user) => user.email === sessionEmail)
+  if (currentUser) return <AdminView user={currentUser} />
 
   return (
     <main className="auth-screen">
@@ -476,13 +487,17 @@ function AdminGate() {
   )
 }
 
-function AdminView() {
+function AdminView({ user }: { user: AuthState }) {
+  const userId = userIdFromEmail(user.email)
+  const presentationKey = presentationKeyForUser(userId)
+  const votesKey = votesKeyForUser(userId)
+  const showHref = `#present/${userId}`
   const {
     presentation: savedPresentation,
     setPresentation: savePresentation,
     undo,
     canUndo,
-  } = useStoredPresentation()
+  } = useStoredPresentation(userId)
   const [presentation, setPresentation] = useState(savedPresentation)
   const [presentationBase, setPresentationBase] = useState(savedPresentation)
   const [selectedId, setSelectedId] = useState(presentation.slides[0]?.id)
@@ -494,6 +509,7 @@ function AdminView() {
   const fileInput = useRef<HTMLInputElement>(null)
   const audioInput = useRef<HTMLInputElement>(null)
   const importInput = useRef<HTMLInputElement>(null)
+  const slideListRef = useRef<HTMLDivElement>(null)
   const isDirty = JSON.stringify(presentation) !== JSON.stringify(savedPresentation)
 
   if (presentationBase !== savedPresentation) {
@@ -510,8 +526,15 @@ function AdminView() {
 
   const addSlide = () => {
     const slide = createSlide()
-    setPresentation({ ...presentation, slides: [...presentation.slides, slide] })
+    const activeIndex = presentation.slides.findIndex((item) => item.id === selected?.id)
+    const insertIndex = activeIndex >= 0 ? activeIndex + 1 : presentation.slides.length
+    const slides = [...presentation.slides]
+    slides.splice(insertIndex, 0, slide)
+    setPresentation({ ...presentation, slides })
     setSelectedId(slide.id)
+    window.setTimeout(() => {
+      slideListRef.current?.querySelector(`[data-slide-id="${slide.id}"]`)?.scrollIntoView({ block: 'center' })
+    }, 0)
   }
 
   const copySlide = (slideId: string) => {
@@ -598,11 +621,11 @@ function AdminView() {
   }
 
   const resetVotes = (slideId?: string) => {
-    const votes = readJson<VoteStore>(VOTES_KEY, {})
+    const votes = readJson<VoteStore>(votesKey, {})
     if (slideId) delete votes[slideId]
     else Object.keys(votes).forEach((key) => delete votes[key])
-    writeJson(VOTES_KEY, votes)
-    void resetRemoteVotes(slideId)
+    writeJson(votesKey, votes)
+    void resetRemoteVotes(slideId, userId)
   }
 
   const exportPresentation = () => {
@@ -612,6 +635,77 @@ function AdminView() {
     link.download = 'poll-slide-studio.json'
     link.click()
     URL.revokeObjectURL(link.href)
+  }
+
+  const exportPowerPoint = async () => {
+    const { default: pptxgen } = await import('pptxgenjs')
+    const pptx = new pptxgen()
+    pptx.layout = 'LAYOUT_WIDE'
+    pptx.author = user.email
+    pptx.subject = presentation.title
+    pptx.title = presentation.title
+    pptx.company = 'Студия интерактивных слайдов'
+    pptx.theme = {
+      headFontFace: 'Arial',
+      bodyFontFace: 'Arial',
+    }
+
+    presentation.slides.forEach((item, index) => {
+      const pptSlide = pptx.addSlide()
+      pptSlide.background = { color: 'F7F8F6' }
+      if (item.image) {
+        pptSlide.addImage({ data: item.image, x: 0, y: 0, w: 13.333, h: 7.5 })
+      }
+      if (!item.image && !item.poll) {
+        pptSlide.addText(item.title || `Слайд ${index + 1}`, {
+          x: 0.8,
+          y: 0.8,
+          w: 11.7,
+          h: 1,
+          fontFace: 'Arial',
+          fontSize: 34,
+          bold: true,
+          color: '12211B',
+          fit: 'shrink',
+        })
+      }
+      if (item.poll) {
+        pptSlide.addText(item.poll.question, {
+          x: 0.8,
+          y: 0.65,
+          w: 8.8,
+          h: 0.9,
+          fontFace: 'Arial',
+          fontSize: 30,
+          bold: true,
+          color: '12211B',
+          fit: 'shrink',
+        })
+        item.poll.options.forEach((option, optionIndex) => {
+          pptSlide.addShape(pptx.ShapeType.roundRect, {
+            x: 0.9,
+            y: 2 + optionIndex * 0.62,
+            w: 8.4,
+            h: 0.46,
+            rectRadius: 0.06,
+            fill: { color: 'FFFFFF', transparency: 8 },
+            line: { color: 'D1DBD5', width: 1 },
+          })
+          pptSlide.addText(option.text, {
+            x: 1.08,
+            y: 2.07 + optionIndex * 0.62,
+            w: 8,
+            h: 0.28,
+            fontFace: 'Arial',
+            fontSize: 16,
+            color: '12211B',
+            fit: 'shrink',
+          })
+        })
+      }
+    })
+
+    await pptx.writeFile({ fileName: `${presentation.title || 'presentation'}.pptx` })
   }
 
   const importPresentation = (file?: File) => {
@@ -626,9 +720,9 @@ function AdminView() {
   }
 
   const publishPresentation = async () => {
-    writeJson(PRESENTATION_KEY, presentation)
+    writeJson(presentationKey, presentation)
     setPublishStatus('Публикуем презентацию...')
-    const saved = await saveRemotePresentation(presentation)
+    const saved = await saveRemotePresentation(presentation, userId)
     setPublishStatus(
       saved
         ? 'Презентация опубликована для других устройств.'
@@ -654,11 +748,12 @@ function AdminView() {
           <Trash2 size={16} />
           Удалить выбранные
         </button>
-        <div className="slides">
+        <div className="slides" ref={slideListRef}>
           {presentation.slides.map((slide, index) => (
             <div
               className={slide.id === selected?.id ? 'thumb active' : 'thumb'}
               key={slide.id}
+              data-slide-id={slide.id}
               role="button"
               tabIndex={0}
               draggable
@@ -721,13 +816,24 @@ function AdminView() {
             <button className="reset-action" type="button" onClick={() => resetVotes()} title="Обнулить все ответы">
               <RotateCcw size={18} />
             </button>
+            <button className={audioName ? 'icon-on' : ''} type="button" onClick={() => audioInput.current?.click()} title="Музыка презентации">
+              <Music size={18} />
+            </button>
+            {audioName && (
+              <button type="button" onClick={removeAudio} title="Удалить локальный трек">
+                <VolumeX size={18} />
+              </button>
+            )}
             <button type="button" onClick={exportPresentation} title="Экспорт">
               <Upload size={18} />
+            </button>
+            <button type="button" onClick={() => void exportPowerPoint()} title="Экспорт в PowerPoint">
+              PPT
             </button>
             <button type="button" onClick={() => importInput.current?.click()} title="Импорт">
               <Download size={18} />
             </button>
-            <a className="button-link" href="#present">
+            <a className="button-link" href={showHref}>
               <Eye size={18} />
               Показ
             </a>
@@ -739,6 +845,7 @@ function AdminView() {
             accept="application/json"
             onChange={(event) => importPresentation(event.target.files?.[0])}
           />
+          <input hidden ref={audioInput} type="file" accept="audio/*" onChange={(event) => onAudio(event.target.files?.[0])} />
         </header>
         {publishStatus && <div className="publish-status">{publishStatus}</div>}
 
@@ -782,24 +889,6 @@ function AdminView() {
                   Удалить изображение
                 </button>
               )}
-              <div className="media-control">
-                <strong>Музыка презентации</strong>
-                <small>Серверный трек доступен в показе для всех презентаций. Локальная загрузка заменяет его только на этом устройстве.</small>
-                <button type="button" onClick={() => audioInput.current?.click()}>
-                  <Music size={18} />
-                  {audioName ? 'Заменить трек' : 'Добавить трек'}
-                </button>
-                {audioName && (
-                  <>
-                    <small>{audioName}</small>
-                    <button type="button" onClick={removeAudio}>
-                      <VolumeX size={18} />
-                      Удалить трек
-                    </button>
-                  </>
-                )}
-                <input hidden ref={audioInput} type="file" accept="audio/*" onChange={(event) => onAudio(event.target.files?.[0])} />
-              </div>
               <label className="checkbox-row">
                 <input type="checkbox" checked={Boolean(selected.poll)} onChange={(event) => togglePoll(event.target.checked)} />
                 Опрос
@@ -921,10 +1010,14 @@ function PollBuilder({ poll, onChange, onReset }: { poll: Poll; onChange: (poll:
   )
 }
 
-function SpeakerView() {
-  const [presentation, setPresentation] = useState(() => readJson(PRESENTATION_CACHE_KEY, readJson(PRESENTATION_KEY, starterPresentation())))
-  const [votes, setVotes] = useState(() => readJson<VoteStore>(VOTES_KEY, {}))
-  const [remotePresentationReady, setRemotePresentationReady] = useState(() => Boolean(readJson<Presentation | null>(PRESENTATION_CACHE_KEY, null)) || !firebaseEnabled)
+function SpeakerView({ userId = DEFAULT_USER_ID }: { userId?: string }) {
+  const presentationKey = presentationKeyForUser(userId)
+  const presentationCacheKey = presentationCacheKeyForUser(userId)
+  const votesKey = votesKeyForUser(userId)
+  const openPollsKey = openPollsKeyForUser(userId)
+  const [presentation, setPresentation] = useState(() => readJson(presentationCacheKey, readJson(presentationKey, starterPresentation())))
+  const [votes, setVotes] = useState(() => readJson<VoteStore>(votesKey, {}))
+  const [remotePresentationReady, setRemotePresentationReady] = useState(() => Boolean(readJson<Presentation | null>(presentationCacheKey, null)) || !firebaseEnabled)
   const [remotePresentationError, setRemotePresentationError] = useState(false)
   const [pollSessions, setPollSessions] = useState<Record<string, string>>({})
   const [audio, setAudio] = useState(() => readJson<PresentationAudio | null>(PRESENTATION_AUDIO_KEY, null) ?? SERVER_AUDIO)
@@ -937,7 +1030,7 @@ function SpeakerView() {
 
   useEffect(() => {
     const sync = () => {
-      setVotes(readJson(VOTES_KEY, {}))
+      setVotes(readJson(votesKey, {}))
       setAudio(readJson(PRESENTATION_AUDIO_KEY, null) ?? SERVER_AUDIO)
     }
     window.addEventListener('storage', sync)
@@ -946,17 +1039,17 @@ function SpeakerView() {
       window.removeEventListener('storage', sync)
       window.removeEventListener('poll-slide-studio-storage', sync)
     }
-  }, [])
+  }, [votesKey])
 
   useEffect(() => {
     if (!firebaseEnabled) return undefined
     let active = true
-    void readRemotePresentation()
+    void readRemotePresentation(userId)
       .then((remotePresentation) => {
         if (!active) return
         if (remotePresentation) {
           setPresentation(remotePresentation as Presentation)
-          writeJson(PRESENTATION_CACHE_KEY, remotePresentation)
+          writeJson(presentationCacheKey, remotePresentation)
         }
         setRemotePresentationReady(true)
       })
@@ -967,13 +1060,13 @@ function SpeakerView() {
       })
     const unsubscribeVotes = subscribeRemoteVotes((remoteVotes) => {
       setVotes(remoteVotes)
-      writeJson(VOTES_KEY, remoteVotes)
-    })
+      writeJson(votesKey, remoteVotes)
+    }, userId)
     return () => {
       active = false
       unsubscribeVotes()
     }
-  }, [])
+  }, [presentationCacheKey, userId, votesKey])
 
   useEffect(() => {
     const openPollKey = slide?.poll && !showResults ? slide.id : ''
@@ -1004,17 +1097,17 @@ function SpeakerView() {
         })
       }
     }
-    writeJson(OPEN_POLLS_KEY, openPolls)
-    void saveRemoteOpenPolls(openPolls)
-  }, [pollSessions, presentation.slides, remotePresentationReady, slide?.id, slide?.poll, slide?.title, showResults])
+    writeJson(openPollsKey, openPolls)
+    void saveRemoteOpenPolls(openPolls, userId)
+  }, [openPollsKey, pollSessions, presentation.slides, remotePresentationReady, slide?.id, slide?.poll, slide?.title, showResults, userId])
 
   const next = () => {
     if (slide?.poll && !showResults) {
       setShowResults(true)
-      void readRemoteVotes().then((remoteVotes) => {
+      void readRemoteVotes(userId).then((remoteVotes) => {
         if (remoteVotes) {
           setVotes(remoteVotes)
-          writeJson(VOTES_KEY, remoteVotes)
+          writeJson(votesKey, remoteVotes)
         }
       })
       return
@@ -1031,10 +1124,10 @@ function SpeakerView() {
   const refreshPublishedPresentation = async () => {
     setRemotePresentationReady(false)
     setRemotePresentationError(false)
-    const remotePresentation = await readRemotePresentation()
+    const remotePresentation = await readRemotePresentation(userId)
     if (remotePresentation) {
       setPresentation(remotePresentation as Presentation)
-      writeJson(PRESENTATION_CACHE_KEY, remotePresentation)
+      writeJson(presentationCacheKey, remotePresentation)
       setIndex(0)
       setShowResults(false)
       setRemotePresentationReady(true)
@@ -1108,6 +1201,7 @@ function SpeakerView() {
         mode={showResults ? 'results' : 'present'}
         votes={votes[slide.id] ?? {}}
         pollSession={pollSessions[slide.id]}
+        userId={userId}
       />
       <div className="presenter-controls">
         <button type="button" onClick={previous}>
@@ -1138,11 +1232,13 @@ function SlideCanvas({
   mode,
   votes,
   pollSession,
+  userId = DEFAULT_USER_ID,
 }: {
   slide: Slide
   mode: 'edit' | 'present' | 'results'
   votes: Record<string, number>
   pollSession?: string
+  userId?: string
 }) {
   const sortedOptions = useMemo(() => {
     if (!slide.poll) return []
@@ -1194,7 +1290,7 @@ function SlideCanvas({
           </div>
           {mode !== 'results' && (
             <div className="qr-box">
-              <QRCodeSVG value={getPollUrl(slide, pollSession)} size={240} />
+              <QRCodeSVG value={getPollUrl(slide, pollSession, userId)} size={240} />
             </div>
           )}
         </>
@@ -1204,13 +1300,17 @@ function SlideCanvas({
 }
 
 function ParticipantView({ slideId }: { slideId: string }) {
-  const [presentation, setPresentation] = useState(() => readJson(PRESENTATION_KEY, starterPresentation()))
-  const [openPolls, setOpenPolls] = useState(() => readJson<RemoteOpenPolls>(OPEN_POLLS_KEY, {}))
+  const pollParam = new URLSearchParams(window.location.search).get('poll')
+  const userId = new URLSearchParams(window.location.search).get('u') || DEFAULT_USER_ID
+  const presentationKey = presentationKeyForUser(userId)
+  const votesKey = votesKeyForUser(userId)
+  const openPollsKey = openPollsKeyForUser(userId)
+  const [presentation, setPresentation] = useState(() => readJson(presentationKey, readJson(PRESENTATION_KEY, starterPresentation())))
+  const [openPolls, setOpenPolls] = useState(() => readJson<RemoteOpenPolls>(openPollsKey, {}))
   const [remotePresentationReady, setRemotePresentationReady] = useState(!firebaseEnabled)
   const [remoteOpenPollsReady, setRemoteOpenPollsReady] = useState(!firebaseEnabled)
   const [remotePresentationError, setRemotePresentationError] = useState(false)
-  const pollParam = new URLSearchParams(window.location.search).get('poll')
-  const answerKey = `poll-slide-studio.answer.${slideId}.${pollParam ?? 'live'}`
+  const answerKey = `poll-slide-studio.answer.${userId}.${slideId}.${pollParam ?? 'live'}`
   const [selected, setSelected] = useState<string | null>(() => localStorage.getItem(answerKey))
   const [answerError, setAnswerError] = useState('')
   const [remotePollSession, setRemotePollSession] = useState<RemotePollSession | null>(null)
@@ -1234,8 +1334,8 @@ function ParticipantView({ slideId }: { slideId: string }) {
 
   useEffect(() => {
     const sync = () => {
-      setPresentation(readJson(PRESENTATION_KEY, starterPresentation()))
-      setOpenPolls(readJson(OPEN_POLLS_KEY, {}))
+      setPresentation(readJson(presentationKey, starterPresentation()))
+      setOpenPolls(readJson(openPollsKey, {}))
     }
     window.addEventListener('storage', sync)
     window.addEventListener('poll-slide-studio-storage', sync)
@@ -1243,7 +1343,7 @@ function ParticipantView({ slideId }: { slideId: string }) {
       window.removeEventListener('storage', sync)
       window.removeEventListener('poll-slide-studio-storage', sync)
     }
-  }, [])
+  }, [openPollsKey, presentationKey])
 
   useEffect(() => {
     if (!shortPollData || shortPollData.s !== slideId) return undefined
@@ -1259,12 +1359,12 @@ function ParticipantView({ slideId }: { slideId: string }) {
   useEffect(() => {
     if (!firebaseEnabled) return undefined
     let active = true
-    void readRemotePresentation()
+    void readRemotePresentation(userId)
       .then((remotePresentation) => {
         if (!active) return
         if (remotePresentation) {
           setPresentation(remotePresentation as Presentation)
-          writeJson(PRESENTATION_KEY, remotePresentation)
+          writeJson(presentationKey, remotePresentation)
         }
         setRemotePresentationReady(true)
       })
@@ -1276,26 +1376,27 @@ function ParticipantView({ slideId }: { slideId: string }) {
     const unsubscribeOpenPolls = subscribeRemoteOpenPolls(
       (remoteOpenPolls) => {
         setOpenPolls(remoteOpenPolls)
-        writeJson(OPEN_POLLS_KEY, remoteOpenPolls)
+        writeJson(openPollsKey, remoteOpenPolls)
         setRemoteOpenPollsReady(true)
       },
       () => setRemoteOpenPollsReady(true),
+      userId,
     )
     return () => {
       active = false
       unsubscribeOpenPolls()
     }
-  }, [])
+  }, [openPollsKey, presentationKey, userId])
 
   const answer = async (optionId: string) => {
     if (!poll || selected || !isOpen) return
-    const votes = readJson<VoteStore>(VOTES_KEY, {})
+    const votes = readJson<VoteStore>(votesKey, {})
     votes[slideId] = votes[slideId] ?? {}
     votes[slideId][optionId] = (votes[slideId][optionId] ?? 0) + 1
-    writeJson(VOTES_KEY, votes)
+    writeJson(votesKey, votes)
     localStorage.setItem(answerKey, optionId)
     setSelected(optionId)
-    const saved = await incrementRemoteVote(slideId, optionId)
+    const saved = await incrementRemoteVote(slideId, optionId, userId)
     if (!saved && firebaseEnabled) {
       setAnswerError('Не удалось отправить ответ. Обновите страницу и попробуйте еще раз.')
       return

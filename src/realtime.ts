@@ -34,6 +34,8 @@ type SubscribeOptions = {
   poll?: boolean
 }
 
+const scopedName = (name: string, scope = 'default') => `users/${scope}/${name}`
+
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
@@ -236,21 +238,25 @@ const subscribeRemoteJson = <T,>(
   )
 }
 
-export const saveRemotePresentation = async (presentation: RemotePresentation) => {
-  return saveRemoteJson('presentation', presentation)
+export const saveRemotePresentation = async (presentation: RemotePresentation, scope = 'default') => {
+  return saveRemoteJson(scopedName('presentation', scope), presentation)
 }
 
-export const readRemotePresentation = async () => readRemoteJson<RemotePresentation | null>('presentation', null)
+export const readRemotePresentation = async (scope = 'default') =>
+  readRemoteJson<RemotePresentation | null>(scopedName('presentation', scope), null)
 
-export const subscribeRemotePresentation = (onChange: (presentation: RemotePresentation | null) => void, onError?: () => void) =>
-  subscribeRemoteJson<RemotePresentation | null>('presentation', null, onChange, onError, { poll: false })
+export const subscribeRemotePresentation = (
+  onChange: (presentation: RemotePresentation | null) => void,
+  onError?: () => void,
+  scope = 'default',
+) => subscribeRemoteJson<RemotePresentation | null>(scopedName('presentation', scope), null, onChange, onError, { poll: false })
 
-export const saveRemoteOpenPolls = async (openPolls: RemoteOpenPolls) => {
-  return saveRemoteJson('openPolls', openPolls)
+export const saveRemoteOpenPolls = async (openPolls: RemoteOpenPolls, scope = 'default') => {
+  return saveRemoteJson(scopedName('openPolls', scope), openPolls)
 }
 
-export const subscribeRemoteOpenPolls = (onChange: (openPolls: RemoteOpenPolls) => void, onError?: () => void) =>
-  subscribeRemoteJson<RemoteOpenPolls>('openPolls', {}, onChange, onError)
+export const subscribeRemoteOpenPolls = (onChange: (openPolls: RemoteOpenPolls) => void, onError?: () => void, scope = 'default') =>
+  subscribeRemoteJson<RemoteOpenPolls>(scopedName('openPolls', scope), {}, onChange, onError)
 
 export const saveRemotePollSession = async (sessionId: string, session: RemotePollSession) => {
   const realtime = getRealtimeDb()
@@ -274,8 +280,8 @@ export const readRemotePollSession = async (sessionId: string) => {
   }
 }
 
-export const readRemoteVotes = async () => {
-  const realtimeVotesUrl = realtimeRestUrl('pollSlideStudioVotes')
+export const readRemoteVotes = async (scope = 'default') => {
+  const realtimeVotesUrl = realtimeRestUrl(`pollSlideStudioVotes/${scope}`)
   if (realtimeVotesUrl) {
     try {
       const response = await fetchWithTimeout(realtimeVotesUrl, undefined, 15000)
@@ -289,7 +295,7 @@ export const readRemoteVotes = async () => {
   const realtime = getRealtimeDb()
   if (realtime) {
     try {
-      const snapshot = await get(ref(realtime, 'pollSlideStudioVotes'))
+      const snapshot = await get(ref(realtime, `pollSlideStudioVotes/${scope}`))
       return (snapshot.val() ?? {}) as RemoteVoteStore
     } catch {
       return null
@@ -299,8 +305,8 @@ export const readRemoteVotes = async () => {
   return null
 }
 
-export const subscribeRemoteVotes = (onChange: (votes: RemoteVoteStore) => void) => {
-  const realtimeVotesUrl = realtimeRestUrl('pollSlideStudioVotes')
+export const subscribeRemoteVotes = (onChange: (votes: RemoteVoteStore) => void, scope = 'default') => {
+  const realtimeVotesUrl = realtimeRestUrl(`pollSlideStudioVotes/${scope}`)
   if (realtimeVotesUrl) {
     let stopped = false
     let previous = ''
@@ -331,7 +337,7 @@ export const subscribeRemoteVotes = (onChange: (votes: RemoteVoteStore) => void)
   const realtime = getRealtimeDb()
   if (realtime) {
     let previous = ''
-    return onValue(ref(realtime, 'pollSlideStudioVotes'), (snapshot) => {
+    return onValue(ref(realtime, `pollSlideStudioVotes/${scope}`), (snapshot) => {
       const votes = (snapshot.val() ?? {}) as RemoteVoteStore
       const next = JSON.stringify(votes)
       if (next !== previous) {
@@ -356,12 +362,12 @@ export const subscribeRemoteVotes = (onChange: (votes: RemoteVoteStore) => void)
   })
 }
 
-export const incrementRemoteVote = async (slideId: string, optionId: string) => {
+export const incrementRemoteVote = async (slideId: string, optionId: string, scope = 'default') => {
   const realtime = getRealtimeDb()
   if (realtime) {
     for (let attempt = 0; attempt < 5; attempt += 1) {
       try {
-        await runTransaction(ref(realtime, `pollSlideStudioVotes/${slideId}/${optionId}`), (current) =>
+        await runTransaction(ref(realtime, `pollSlideStudioVotes/${scope}/${slideId}/${optionId}`), (current) =>
           typeof current === 'number' ? current + 1 : 1,
         )
         return true
@@ -388,10 +394,10 @@ export const incrementRemoteVote = async (slideId: string, optionId: string) => 
   }
 }
 
-export const resetRemoteVotes = async (slideId?: string) => {
+export const resetRemoteVotes = async (slideId?: string, scope = 'default') => {
   const realtime = getRealtimeDb()
   if (realtime) {
-    await remove(ref(realtime, slideId ? `pollSlideStudioVotes/${slideId}` : 'pollSlideStudioVotes'))
+    await remove(ref(realtime, slideId ? `pollSlideStudioVotes/${scope}/${slideId}` : `pollSlideStudioVotes/${scope}`))
     return
   }
 
