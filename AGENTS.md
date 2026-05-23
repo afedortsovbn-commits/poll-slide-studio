@@ -20,3 +20,12 @@
 ## Verification
 
 Before delivery, run lint and build, then verify admin, speaker, and participant routes in the in-app Browser.
+
+## Telegram Delivery
+
+If the user asks to send a finished artifact to Telegram, use the shared workspace rule:
+- read the bot token from `E:\CodexProj\telegram_bot_token.txt`;
+- never print, commit, or store the token in project files;
+- send to the default user chat `chat_id=809586162`;
+- use Telegram Bot API `sendDocument` for files and `sendMessage` for short text;
+- if network access requires approval, request it through the tool and continue after approval.
