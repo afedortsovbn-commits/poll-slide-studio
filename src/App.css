@@ -258,7 +258,10 @@ label {
 
 .thumb.active {
   border-color: #ffffff;
-  outline: 2px solid #79b99c;
+  outline: 3px solid #79d2a4;
+  background: #f4fbf6;
+  box-shadow: inset 5px 0 0 #1f7a5a;
+  transform: translateX(3px);
 }
 
 .editor {
@@ -281,6 +284,10 @@ label {
 .title-input {
   max-width: 380px;
   font-weight: 800;
+}
+
+.presentation-select {
+  max-width: 260px;
 }
 
 .toolbar-actions {
@@ -398,6 +405,12 @@ label {
     linear-gradient(0deg, #f7f8f6, #e9efeb);
 }
 
+.image-tone {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
 .question-block {
   position: absolute;
   width: 68%;
@@ -414,6 +427,11 @@ label {
   gap: calc(8px * var(--option-scale, 1));
 }
 
+.poll-dark .question-block {
+  color: #f4fbf6;
+  text-shadow: 0 2px 16px rgba(0, 0, 0, 0.34);
+}
+
 .answer-row {
   min-height: calc(34px * var(--option-scale, 1));
   display: grid;
@@ -428,6 +446,12 @@ label {
   font-size: calc(clamp(10px, 1.55cqw, 30px) * var(--option-scale, 1));
   font-weight: 500;
   line-height: 1.08;
+}
+
+.poll-dark .answer-row {
+  color: #f4fbf6;
+  background: rgba(12, 18, 16, 0.82);
+  border-color: rgba(255, 255, 255, 0.22);
 }
 
 .answer-row.correct {
@@ -453,6 +477,11 @@ label {
   width: min(24.2cqw, 297px);
   height: auto;
   display: block;
+}
+
+.poll-dark .answer-row.correct {
+  color: #102018;
+  background: #bff0d0;
 }
 
 .presenter-screen .qr-box svg {
@@ -652,6 +681,23 @@ label {
   font-weight: 750;
   overflow-wrap: anywhere;
   white-space: normal;
+}
+
+.access-list {
+  display: grid;
+  gap: 6px;
+}
+
+.account-row {
+  display: grid;
+  grid-template-columns: 1fr 38px;
+  align-items: center;
+  gap: 8px;
+}
+
+.account-row span {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .transition-fade {

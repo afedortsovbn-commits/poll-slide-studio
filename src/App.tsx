@@ -49,6 +49,7 @@ type Poll = {
   question: string
   options: PollOption[]
   correctOptionId?: string
+  theme?: 'light' | 'dark'
   questionScale: number
   optionScale: number
   questionX: number
@@ -61,6 +62,7 @@ type Slide = {
   id: string
   title: string
   image?: string
+  imageTone?: number
   transition: Transition
   poll?: Poll
 }
@@ -68,6 +70,14 @@ type Slide = {
 type Presentation = {
   title: string
   slides: Slide[]
+}
+
+type PresentationRecord = {
+  id: string
+  title: string
+  ownerEmail: string
+  editorEmails: string[]
+  presentation: Presentation
 }
 
 type PresentationAudio = {
@@ -105,6 +115,7 @@ const AUTH_KEY = 'poll-slide-studio.auth'
 const AUTH_USERS_KEY = 'poll-slide-studio.auth-users'
 const SESSION_KEY = 'poll-slide-studio.session'
 const PRESENTATION_KEY = 'poll-slide-studio.presentation'
+const PRESENTATION_RECORDS_KEY = 'poll-slide-studio.presentation-records'
 const PRESENTATION_CACHE_KEY = 'poll-slide-studio.presentation-cache'
 const PRESENTATION_AUDIO_KEY = 'poll-slide-studio.presentation-audio'
 const SERVER_AUDIO: PresentationAudio = {
@@ -161,6 +172,7 @@ const starterPoll = (): Poll => ({
   questionY: 12,
   optionsX: 8,
   optionsY: 36,
+  theme: 'light',
 })
 
 const readJson = <T,>(key: string, fallback: T): T => {
@@ -199,31 +211,29 @@ const presentationKeyForUser = (userId: string) => `${PRESENTATION_KEY}.${userId
 const presentationCacheKeyForUser = (userId: string) => `${PRESENTATION_CACHE_KEY}.${userId}`
 const votesKeyForUser = (userId: string) => `${VOTES_KEY}.${userId}`
 const openPollsKeyForUser = (userId: string) => `${OPEN_POLLS_KEY}.${userId}`
+const presentationScope = (presentationId: string) => presentationId || DEFAULT_USER_ID
 
-const useStoredPresentation = (userId: string) => {
-  const presentationKey = presentationKeyForUser(userId)
-  const [presentation, setPresentationState] = useState<Presentation>(() =>
-    readJson(presentationKey, readJson(PRESENTATION_KEY, starterPresentation())),
-  )
-  const [history, setHistory] = useState<Presentation[]>([])
+const canEditPresentation = (record: PresentationRecord, email: string) =>
+  record.ownerEmail === email || record.editorEmails.includes(email)
 
-  const setPresentation = (next: Presentation) => {
-    setHistory((items) => [presentation, ...items].slice(0, 3))
-    setPresentationState(next)
-    writeJson(presentationKey, next)
-    void saveRemotePresentation(next, userId)
+const readPresentationRecords = (email: string): PresentationRecord[] => {
+  const stored = readJson<PresentationRecord[]>(PRESENTATION_RECORDS_KEY, [])
+  if (stored.length) return stored
+  const userId = userIdFromEmail(email)
+  const migrated = readJson(presentationKeyForUser(userId), readJson(PRESENTATION_KEY, starterPresentation()))
+  const record: PresentationRecord = {
+    id: createId(),
+    title: migrated.title || 'Основная презентация',
+    ownerEmail: email,
+    editorEmails: [email],
+    presentation: migrated,
   }
+  writeJson(PRESENTATION_RECORDS_KEY, [record])
+  return [record]
+}
 
-  const undo = () => {
-    const [previous, ...rest] = history
-    if (!previous) return
-    setHistory(rest)
-    setPresentationState(previous)
-    writeJson(presentationKey, previous)
-    void saveRemotePresentation(previous, userId)
-  }
-
-  return { presentation, setPresentation, undo, canUndo: history.length > 0 }
+const writePresentationRecords = (records: PresentationRecord[]) => {
+  writeJson(PRESENTATION_RECORDS_KEY, records)
 }
 
 const toBase64Url = (value: string) => {
@@ -310,6 +320,7 @@ const fitPollOptions = (poll: Poll): Poll => {
 const createSlide = (): Slide => ({
   id: createId(),
   title: 'Новый слайд',
+  imageTone: 0,
   transition: 'fade',
 })
 
@@ -423,7 +434,19 @@ function AdminGate() {
   }
 
   const currentUser = authStore.users.find((user) => user.email === sessionEmail)
-  if (currentUser) return <AdminView user={currentUser} />
+  if (currentUser) {
+    return (
+      <AdminView
+        user={currentUser}
+        authStore={authStore}
+        setAuthStore={setAuthStore}
+        onSwitchAccount={() => {
+          localStorage.removeItem(SESSION_KEY)
+          setSessionEmail('')
+        }}
+      />
+    )
+  }
 
   return (
     <main className="auth-screen">
@@ -487,34 +510,78 @@ function AdminGate() {
   )
 }
 
-function AdminView({ user }: { user: AuthState }) {
-  const userId = userIdFromEmail(user.email)
-  const presentationKey = presentationKeyForUser(userId)
-  const votesKey = votesKeyForUser(userId)
-  const showHref = `#present/${userId}`
-  const {
-    presentation: savedPresentation,
-    setPresentation: savePresentation,
-    undo,
-    canUndo,
-  } = useStoredPresentation(userId)
-  const [presentation, setPresentation] = useState(savedPresentation)
-  const [presentationBase, setPresentationBase] = useState(savedPresentation)
+function AdminView({
+  user,
+  authStore,
+  setAuthStore,
+  onSwitchAccount,
+}: {
+  user: AuthState
+  authStore: AuthStore
+  setAuthStore: (store: AuthStore) => void
+  onSwitchAccount: () => void
+}) {
+  const [presentationRecords, setPresentationRecords] = useState(() => readPresentationRecords(user.email))
+  const availableRecords = presentationRecords.filter((record) => canEditPresentation(record, user.email))
+  const [activePresentationId, setActivePresentationId] = useState(availableRecords[0]?.id ?? '')
+  const activeRecord = availableRecords.find((record) => record.id === activePresentationId) ?? availableRecords[0]
+  const scope = presentationScope(activeRecord?.id ?? DEFAULT_USER_ID)
+  const presentationKey = `${PRESENTATION_KEY}.record.${scope}`
+  const votesKey = votesKeyForUser(scope)
+  const showHref = `#present/${scope}`
+  const [presentation, setPresentationState] = useState(activeRecord?.presentation ?? starterPresentation())
+  const [presentationBase, setPresentationBase] = useState(activeRecord?.presentation ?? starterPresentation())
+  const [history, setHistory] = useState<Presentation[]>([])
   const [selectedId, setSelectedId] = useState(presentation.slides[0]?.id)
   const [selectedSlideIds, setSelectedSlideIds] = useState<string[]>([])
   const [audioName, setAudioName] = useState(() => readJson<PresentationAudio | null>(PRESENTATION_AUDIO_KEY, null)?.name ?? '')
   const [draggedSlideId, setDraggedSlideId] = useState<string | null>(null)
   const [publishStatus, setPublishStatus] = useState('')
+  const [newUserEmail, setNewUserEmail] = useState('')
+  const [newUserPassword, setNewUserPassword] = useState('')
+  const [newPresentationTitle, setNewPresentationTitle] = useState('')
+  const [newPresentationEditors, setNewPresentationEditors] = useState<string[]>([user.email])
   const selected = presentation.slides.find((slide) => slide.id === selectedId) ?? presentation.slides[0]
   const fileInput = useRef<HTMLInputElement>(null)
   const audioInput = useRef<HTMLInputElement>(null)
   const importInput = useRef<HTMLInputElement>(null)
   const slideListRef = useRef<HTMLDivElement>(null)
-  const isDirty = JSON.stringify(presentation) !== JSON.stringify(savedPresentation)
+  const isOwner = authStore.users[0]?.email === user.email
+  const canUndo = history.length > 0
+  const isDirty = JSON.stringify(presentation) !== JSON.stringify(presentationBase)
 
-  if (presentationBase !== savedPresentation) {
-    setPresentationBase(savedPresentation)
-    setPresentation(savedPresentation)
+  if (activeRecord && presentationBase !== activeRecord.presentation) {
+    setPresentationBase(activeRecord.presentation)
+    setPresentationState(activeRecord.presentation)
+    setSelectedId(activeRecord.presentation.slides[0]?.id ?? '')
+    setHistory([])
+  }
+
+  const persistRecords = (records: PresentationRecord[]) => {
+    setPresentationRecords(records)
+    writePresentationRecords(records)
+  }
+
+  const setPresentation = (next: Presentation, remember = true) => {
+    if (remember) setHistory((items) => [presentation, ...items].slice(0, 3))
+    setPresentationState(next)
+    setPresentationBase(next)
+    const records = presentationRecords.map((record) =>
+      record.id === scope ? { ...record, title: next.title, presentation: next } : record,
+    )
+    persistRecords(records)
+    writeJson(presentationKey, next)
+  }
+
+  const savePresentation = (next: Presentation) => {
+    setPresentation(next, false)
+  }
+
+  const undo = () => {
+    const [previous, ...rest] = history
+    if (!previous) return
+    setHistory(rest)
+    setPresentation(previous, false)
   }
 
   const updateSlide = (slideId: string, updater: (slide: Slide) => Slide) => {
@@ -522,6 +589,51 @@ function AdminView({ user }: { user: AuthState }) {
       ...presentation,
       slides: presentation.slides.map((slide) => (slide.id === slideId ? updater(slide) : slide)),
     })
+  }
+
+  const createUser = () => {
+    if (!isOwner || !newUserEmail || !newUserPassword || authStore.users.some((item) => item.email === newUserEmail)) return
+    const nextStore = { users: [...authStore.users, { email: newUserEmail, password: newUserPassword }] }
+    writeAuthStore(nextStore)
+    setAuthStore(nextStore)
+    setNewUserEmail('')
+    setNewUserPassword('')
+  }
+
+  const deleteUser = (email: string) => {
+    if (!isOwner || email === user.email || email === authStore.users[0]?.email) return
+    const nextStore = { users: authStore.users.filter((item) => item.email !== email) }
+    const records = presentationRecords.map((record) => ({
+      ...record,
+      editorEmails: record.editorEmails.filter((editor) => editor !== email),
+    }))
+    writeAuthStore(nextStore)
+    setAuthStore(nextStore)
+    persistRecords(records)
+  }
+
+  const createPresentationRecord = () => {
+    const title = newPresentationTitle.trim() || 'Новая презентация'
+    const editors = Array.from(new Set([user.email, ...newPresentationEditors]))
+    const nextPresentation = { ...starterPresentation(), title }
+    const record: PresentationRecord = {
+      id: createId(),
+      title,
+      ownerEmail: user.email,
+      editorEmails: editors,
+      presentation: nextPresentation,
+    }
+    persistRecords([...presentationRecords, record])
+    setActivePresentationId(record.id)
+    setPresentationState(nextPresentation)
+    setPresentationBase(nextPresentation)
+    setSelectedId(nextPresentation.slides[0]?.id ?? '')
+    setNewPresentationTitle('')
+    setNewPresentationEditors([user.email])
+  }
+
+  const togglePresentationEditor = (email: string) => {
+    setNewPresentationEditors((items) => (items.includes(email) ? items.filter((item) => item !== email) : [...items, email]))
   }
 
   const addSlide = () => {
@@ -625,7 +737,7 @@ function AdminView({ user }: { user: AuthState }) {
     if (slideId) delete votes[slideId]
     else Object.keys(votes).forEach((key) => delete votes[key])
     writeJson(votesKey, votes)
-    void resetRemoteVotes(slideId, userId)
+    void resetRemoteVotes(slideId, scope)
   }
 
   const exportPresentation = () => {
@@ -722,7 +834,7 @@ function AdminView({ user }: { user: AuthState }) {
   const publishPresentation = async () => {
     writeJson(presentationKey, presentation)
     setPublishStatus('Публикуем презентацию...')
-    const saved = await saveRemotePresentation(presentation, userId)
+    const saved = await saveRemotePresentation(presentation, scope)
     setPublishStatus(
       saved
         ? 'Презентация опубликована для других устройств.'
@@ -796,6 +908,17 @@ function AdminView({ user }: { user: AuthState }) {
             value={presentation.title}
             onChange={(event) => setPresentation({ ...presentation, title: event.target.value })}
           />
+          <select
+            className="presentation-select"
+            value={activeRecord?.id ?? ''}
+            onChange={(event) => setActivePresentationId(event.target.value)}
+          >
+            {availableRecords.map((record) => (
+              <option value={record.id} key={record.id}>
+                {record.title}
+              </option>
+            ))}
+          </select>
           <div className="toolbar-actions">
             <button type="button" onClick={undo} disabled={!canUndo} title="Отменить">
               <RotateCcw size={18} />
@@ -855,6 +978,60 @@ function AdminView({ user }: { user: AuthState }) {
               <SlideCanvas slide={selected} mode="edit" votes={{}} />
             </section>
             <aside className="properties">
+              <div className="media-control">
+                <strong>Презентации</strong>
+                <input
+                  value={newPresentationTitle}
+                  onChange={(event) => setNewPresentationTitle(event.target.value)}
+                  placeholder="Название новой презентации"
+                />
+                <div className="access-list">
+                  {authStore.users.map((account) => (
+                    <label className="checkbox-row" key={account.email}>
+                      <input
+                        type="checkbox"
+                        checked={newPresentationEditors.includes(account.email)}
+                        onChange={() => togglePresentationEditor(account.email)}
+                      />
+                      {account.email}
+                    </label>
+                  ))}
+                </div>
+                <button type="button" onClick={createPresentationRecord}>
+                  <Plus size={18} />
+                  Создать презентацию
+                </button>
+              </div>
+              {isOwner && (
+                <div className="media-control">
+                  <strong>Аккаунты</strong>
+                  <input value={newUserEmail} onChange={(event) => setNewUserEmail(event.target.value)} placeholder="Логин" />
+                  <input
+                    type="password"
+                    value={newUserPassword}
+                    onChange={(event) => setNewUserPassword(event.target.value)}
+                    placeholder="Пароль"
+                  />
+                  <button type="button" onClick={createUser}>
+                    <UserPlus size={18} />
+                    Создать аккаунт
+                  </button>
+                  {authStore.users.map((account, index) => (
+                    <div className="account-row" key={account.email}>
+                      <span>{account.email}</span>
+                      {index > 0 && account.email !== user.email && (
+                        <button type="button" onClick={() => deleteUser(account.email)}>
+                          <Trash2 size={16} />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+              <button type="button" onClick={onSwitchAccount}>
+                <Lock size={18} />
+                Сменить аккаунт
+              </button>
               <label>
                 Название слайда
                 <input
@@ -889,6 +1066,13 @@ function AdminView({ user }: { user: AuthState }) {
                   Удалить изображение
                 </button>
               )}
+              <NumericControl
+                label="Затемнение / осветление картинки"
+                value={selected.imageTone ?? 0}
+                min={-100}
+                max={100}
+                onChange={(value) => updateSlide(selected.id, (slide) => ({ ...slide, imageTone: value }))}
+              />
               <label className="checkbox-row">
                 <input type="checkbox" checked={Boolean(selected.poll)} onChange={(event) => togglePoll(event.target.checked)} />
                 Опрос
@@ -957,6 +1141,14 @@ function PollBuilder({ poll, onChange, onReset }: { poll: Poll; onChange: (poll:
       <label>
         Вопрос
         <textarea value={poll.question} onChange={(event) => onChange({ ...poll, question: event.target.value })} />
+      </label>
+      <label className="checkbox-row">
+        <input
+          type="checkbox"
+          checked={poll.theme === 'dark'}
+          onChange={(event) => onChange({ ...poll, theme: event.target.checked ? 'dark' : 'light' })}
+        />
+        Темная тема опроса
       </label>
       <div className="option-list">
         {poll.options.map((option) => (
@@ -1250,8 +1442,17 @@ function SlideCanvas({
   const total = Object.values(votes).reduce((sum, count) => sum + count, 0)
 
   return (
-    <div className={`slide-canvas transition-${slide.transition}`}>
+    <div className={`slide-canvas transition-${slide.transition} ${slide.poll?.theme === 'dark' ? 'poll-dark' : ''}`}>
       {slide.image ? <img className="slide-bg" src={slide.image} alt="" /> : <div className="slide-bg placeholder-bg" />}
+      {Boolean(slide.imageTone) && (
+        <div
+          className="image-tone"
+          style={{
+            background: (slide.imageTone ?? 0) > 0 ? '#ffffff' : '#000000',
+            opacity: Math.abs(slide.imageTone ?? 0) / 100,
+          }}
+        />
+      )}
       {slide.poll && (
         <>
           <div
