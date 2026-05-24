@@ -970,6 +970,55 @@ function AdminView({
           />
           <input hidden ref={audioInput} type="file" accept="audio/*" onChange={(event) => onAudio(event.target.files?.[0])} />
         </header>
+        <section className="workspace-bar">
+          <div className="workspace-block">
+            <strong>Новая презентация</strong>
+            <input value={newPresentationTitle} onChange={(event) => setNewPresentationTitle(event.target.value)} placeholder="Название" />
+            <div className="access-list compact">
+              {authStore.users.map((account) => (
+                <label className="checkbox-row" key={account.email}>
+                  <input
+                    type="checkbox"
+                    checked={newPresentationEditors.includes(account.email)}
+                    onChange={() => togglePresentationEditor(account.email)}
+                  />
+                  {account.email}
+                </label>
+              ))}
+            </div>
+            <button type="button" onClick={createPresentationRecord}>
+              <Plus size={18} />
+              Создать
+            </button>
+          </div>
+          {isOwner && (
+            <div className="workspace-block">
+              <strong>Аккаунты</strong>
+              <input value={newUserEmail} onChange={(event) => setNewUserEmail(event.target.value)} placeholder="Логин" />
+              <input type="password" value={newUserPassword} onChange={(event) => setNewUserPassword(event.target.value)} placeholder="Пароль" />
+              <button type="button" onClick={createUser}>
+                <UserPlus size={18} />
+                Создать
+              </button>
+              <div className="account-strip">
+                {authStore.users.map((account, index) => (
+                  <span className="account-chip" key={account.email}>
+                    {account.email}
+                    {index > 0 && account.email !== user.email && (
+                      <button type="button" onClick={() => deleteUser(account.email)} title="Удалить аккаунт">
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+          <button type="button" onClick={onSwitchAccount}>
+            <Lock size={18} />
+            Сменить аккаунт
+          </button>
+        </section>
         {publishStatus && <div className="publish-status">{publishStatus}</div>}
 
         {selected && (
@@ -978,60 +1027,6 @@ function AdminView({
               <SlideCanvas slide={selected} mode="edit" votes={{}} />
             </section>
             <aside className="properties">
-              <div className="media-control">
-                <strong>Презентации</strong>
-                <input
-                  value={newPresentationTitle}
-                  onChange={(event) => setNewPresentationTitle(event.target.value)}
-                  placeholder="Название новой презентации"
-                />
-                <div className="access-list">
-                  {authStore.users.map((account) => (
-                    <label className="checkbox-row" key={account.email}>
-                      <input
-                        type="checkbox"
-                        checked={newPresentationEditors.includes(account.email)}
-                        onChange={() => togglePresentationEditor(account.email)}
-                      />
-                      {account.email}
-                    </label>
-                  ))}
-                </div>
-                <button type="button" onClick={createPresentationRecord}>
-                  <Plus size={18} />
-                  Создать презентацию
-                </button>
-              </div>
-              {isOwner && (
-                <div className="media-control">
-                  <strong>Аккаунты</strong>
-                  <input value={newUserEmail} onChange={(event) => setNewUserEmail(event.target.value)} placeholder="Логин" />
-                  <input
-                    type="password"
-                    value={newUserPassword}
-                    onChange={(event) => setNewUserPassword(event.target.value)}
-                    placeholder="Пароль"
-                  />
-                  <button type="button" onClick={createUser}>
-                    <UserPlus size={18} />
-                    Создать аккаунт
-                  </button>
-                  {authStore.users.map((account, index) => (
-                    <div className="account-row" key={account.email}>
-                      <span>{account.email}</span>
-                      {index > 0 && account.email !== user.email && (
-                        <button type="button" onClick={() => deleteUser(account.email)}>
-                          <Trash2 size={16} />
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-              <button type="button" onClick={onSwitchAccount}>
-                <Lock size={18} />
-                Сменить аккаунт
-              </button>
               <label>
                 Название слайда
                 <input

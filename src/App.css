@@ -202,6 +202,13 @@ label {
   grid-template-rows: auto auto;
   text-align: left;
   cursor: pointer;
+  color: #dfe8e3;
+  background: rgba(255, 255, 255, 0.035);
+  border-color: rgba(255, 255, 255, 0.08);
+  transition:
+    background 0.18s ease,
+    border-color 0.18s ease,
+    box-shadow 0.18s ease;
 }
 
 .drag-marker {
@@ -227,8 +234,8 @@ label {
   width: 24px;
   height: 24px;
   border-radius: 50%;
-  background: #e6ece7;
-  color: #17201d;
+  background: rgba(255, 255, 255, 0.12);
+  color: #dfe8e3;
   display: grid;
   place-items: center;
   font-size: 12px;
@@ -240,7 +247,7 @@ label {
 
 .thumb small {
   grid-column: 4;
-  color: #6d8174;
+  color: #8fa69a;
 }
 
 .checkbox-row {
@@ -257,18 +264,29 @@ label {
 }
 
 .thumb.active {
-  border-color: #ffffff;
-  outline: 3px solid #79d2a4;
-  background: #f4fbf6;
-  box-shadow: inset 5px 0 0 #1f7a5a;
-  transform: translateX(3px);
+  color: #ffffff;
+  border-color: rgba(121, 210, 164, 0.72);
+  outline: 0;
+  background: linear-gradient(90deg, rgba(31, 122, 90, 0.34), rgba(255, 255, 255, 0.07));
+  box-shadow:
+    inset 4px 0 0 #79d2a4,
+    0 8px 20px rgba(0, 0, 0, 0.18);
+}
+
+.thumb.active span {
+  color: #0c1713;
+  background: #9be0ba;
+}
+
+.thumb.active small {
+  color: #b8d7c8;
 }
 
 .editor {
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-rows: 64px 1fr;
+  grid-template-rows: auto auto 1fr;
   overflow: hidden;
 }
 
@@ -284,6 +302,70 @@ label {
 .title-input {
   max-width: 380px;
   font-weight: 800;
+}
+
+.workspace-bar {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  padding: 10px 18px;
+  background: #f3f6f3;
+  border-bottom: 1px solid #d5ddd8;
+  overflow-x: auto;
+}
+
+.workspace-block {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px;
+  background: #ffffff;
+  border: 1px solid #d5ddd8;
+  border-radius: 8px;
+}
+
+.workspace-block strong {
+  white-space: nowrap;
+}
+
+.workspace-block input {
+  width: 170px;
+}
+
+.access-list.compact {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 320px;
+  overflow-x: auto;
+}
+
+.account-strip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 360px;
+  overflow-x: auto;
+}
+
+.account-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 32px;
+  padding: 4px 8px;
+  color: #2f3d37;
+  background: #edf3ef;
+  border: 1px solid #d5ddd8;
+  border-radius: 7px;
+  white-space: nowrap;
+}
+
+.account-chip button {
+  min-height: 24px;
+  width: 24px;
+  padding: 2px;
 }
 
 .presentation-select {
@@ -307,7 +389,7 @@ label {
 
 .workbench {
   min-height: 0;
-  height: calc(100vh - 64px);
+  height: auto;
   display: grid;
   grid-template-columns: minmax(560px, 1fr) 360px;
   gap: 18px;
