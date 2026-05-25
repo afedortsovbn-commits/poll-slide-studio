@@ -2,16 +2,16 @@ import { type CSSProperties, useEffect, useMemo, useRef, useState } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
 import {
   ArrowLeft,
-  ArrowRight,
   Check,
   Circle,
   Copy,
   Download,
   Eye,
+  FileUp,
   GripVertical,
   ImagePlus,
   Lock,
-  Music,
+  Pencil,
   Plus,
   QrCode,
   RotateCcw,
@@ -19,7 +19,6 @@ import {
   Trash2,
   Upload,
   UserPlus,
-  VolumeX,
 } from 'lucide-react'
 import {
   firebaseEnabled,
@@ -49,6 +48,7 @@ type Poll = {
   question: string
   options: PollOption[]
   correctOptionId?: string
+  correctOptionIds?: string[]
   theme?: 'light' | 'dark'
   questionScale: number
   optionScale: number
@@ -92,7 +92,7 @@ type PollUrlData = {
   n?: string
   q?: string
   o?: [string, string][]
-  c?: string
+  c?: string | string[]
 }
 
 type ShortPollUrlData = {
@@ -263,10 +263,13 @@ const decodePollUrlData = (value: string | null): PollUrlData | null => {
   }
 }
 
+const getCorrectOptionIds = (poll: Poll) => poll.correctOptionIds ?? (poll.correctOptionId ? [poll.correctOptionId] : [])
+
 const pollFromUrlData = (data: PollUrlData): Poll => ({
   question: data.q ?? '',
   options: (data.o ?? []).map(([id, text]) => ({ id, text })),
-  correctOptionId: data.c,
+  correctOptionId: Array.isArray(data.c) ? data.c[0] : data.c,
+  correctOptionIds: Array.isArray(data.c) ? data.c : data.c ? [data.c] : undefined,
   questionScale: 100,
   optionScale: 100,
   questionX: 8,
@@ -295,7 +298,7 @@ const getPollUrl = (slide: Slide, pollSession?: string, userId = DEFAULT_USER_ID
           s: slide.id,
           q: poll.question,
           o: poll.options.map((option) => [option.id, option.text]),
-          c: poll.correctOptionId,
+          c: getCorrectOptionIds(poll),
         }),
   )
   url.hash = `poll/${slide.id}`
@@ -541,6 +544,8 @@ function AdminView({
   const [newUserPassword, setNewUserPassword] = useState('')
   const [newPresentationTitle, setNewPresentationTitle] = useState('')
   const [newPresentationEditors, setNewPresentationEditors] = useState<string[]>([user.email])
+  const [presentationDialog, setPresentationDialog] = useState<'create' | 'edit' | null>(null)
+  const [editingPresentationId, setEditingPresentationId] = useState('')
   const selected = presentation.slides.find((slide) => slide.id === selectedId) ?? presentation.slides[0]
   const fileInput = useRef<HTMLInputElement>(null)
   const audioInput = useRef<HTMLInputElement>(null)
@@ -612,6 +617,20 @@ function AdminView({
     persistRecords(records)
   }
 
+  const openCreatePresentationDialog = () => {
+    setNewPresentationTitle('')
+    setNewPresentationEditors([user.email])
+    setEditingPresentationId('')
+    setPresentationDialog('create')
+  }
+
+  const openEditPresentationDialog = (record: PresentationRecord) => {
+    setNewPresentationTitle(record.title)
+    setNewPresentationEditors(record.editorEmails.length ? record.editorEmails : [record.ownerEmail])
+    setEditingPresentationId(record.id)
+    setPresentationDialog('edit')
+  }
+
   const createPresentationRecord = () => {
     const title = newPresentationTitle.trim() || 'Новая презентация'
     const editors = Array.from(new Set([user.email, ...newPresentationEditors]))
@@ -630,6 +649,23 @@ function AdminView({
     setSelectedId(nextPresentation.slides[0]?.id ?? '')
     setNewPresentationTitle('')
     setNewPresentationEditors([user.email])
+    setPresentationDialog(null)
+  }
+
+  const savePresentationRecordSettings = () => {
+    if (!editingPresentationId) return
+    const title = newPresentationTitle.trim() || 'Новая презентация'
+    const editors = Array.from(new Set([user.email, ...newPresentationEditors]))
+    const records = presentationRecords.map((record) =>
+      record.id === editingPresentationId
+        ? { ...record, title, editorEmails: editors, presentation: { ...record.presentation, title } }
+        : record,
+    )
+    persistRecords(records)
+    if (editingPresentationId === activeRecord?.id) {
+      setPresentation({ ...presentation, title }, false)
+    }
+    setPresentationDialog(null)
   }
 
   const togglePresentationEditor = (email: string) => {
@@ -663,6 +699,11 @@ function AdminView({
             ...source.poll,
             options: source.poll.options.map((option) => ({ ...option, id: optionIdMap.get(option.id) ?? createId() })),
             correctOptionId: source.poll.correctOptionId ? optionIdMap.get(source.poll.correctOptionId) : undefined,
+            correctOptionIds: getCorrectOptionIds(source.poll).reduce<string[]>((items, id) => {
+              const nextId = optionIdMap.get(id)
+              if (nextId) items.push(nextId)
+              return items
+            }, []),
           }
         : undefined,
     }
@@ -708,11 +749,6 @@ function AdminView({
       setAudioName(file.name)
     }
     reader.readAsDataURL(file)
-  }
-
-  const removeAudio = () => {
-    localStorage.removeItem(PRESENTATION_AUDIO_KEY)
-    setAudioName('')
   }
 
   const updatePoll = (next: Poll) => {
@@ -893,7 +929,7 @@ function AdminView({
               <GripVertical className="drag-marker" size={16} />
               <span>{index + 1}</span>
               <strong>{slide.title || 'Без названия'}</strong>
-              <small>{slide.poll ? 'Опрос включен' : 'Без опроса'}</small>
+              {slide.poll && <QrCode className="thumb-poll-mark" size={16} />}
             </div>
           ))}
         </div>
@@ -901,133 +937,39 @@ function AdminView({
 
       <section className="editor">
         <header className="toolbar">
-          <input
-            className="title-input"
-            name="presentation-title"
-            autoComplete="off"
-            value={presentation.title}
-            onChange={(event) => setPresentation({ ...presentation, title: event.target.value })}
-          />
-          <select
-            className="presentation-select"
-            value={activeRecord?.id ?? ''}
-            onChange={(event) => setActivePresentationId(event.target.value)}
-          >
-            {availableRecords.map((record) => (
-              <option value={record.id} key={record.id}>
-                {record.title}
-              </option>
-            ))}
-          </select>
-          <div className="toolbar-actions">
-            <div className="action-group" aria-label="История и сохранение">
-              <button type="button" onClick={undo} disabled={!canUndo} title="Отменить">
-                <RotateCcw size={18} />
-              </button>
-              <button
-                className={isDirty ? 'primary small-primary' : ''}
-                type="button"
-                onClick={() => savePresentation(presentation)}
-                disabled={!isDirty}
-                title="Сохранить"
-              >
-                <Save size={18} />
-              </button>
-              <button className="reset-action" type="button" onClick={() => resetVotes()} title="Обнулить все ответы">
-                <RotateCcw size={18} />
-              </button>
-            </div>
-            <button className="primary small-primary" type="button" onClick={() => void publishPresentation()} title="Опубликовать для других устройств">
-              <Upload size={18} />
-              Опубликовать
-            </button>
-            <details className="action-menu" name="admin-menu">
-              <summary className={audioName ? 'icon-on' : ''}>
-                <Music size={18} />
-                Музыка
-              </summary>
-              <div className="action-popover">
-                <button type="button" onClick={() => audioInput.current?.click()}>
-                  <Music size={18} />
-                  {audioName ? 'Заменить трек' : 'Добавить трек'}
-                </button>
-                {audioName && (
-                  <button type="button" onClick={removeAudio}>
-                    <VolumeX size={18} />
-                    Удалить трек
-                  </button>
-                )}
-              </div>
-            </details>
-            <details className="action-menu align-right" name="admin-menu">
-              <summary>
-                <Download size={18} />
-                Файлы
-              </summary>
-              <div className="action-popover">
-                <button type="button" onClick={exportPresentation}>
-                  <Upload size={18} />
-                  Экспорт JSON
-                </button>
-                <button type="button" onClick={() => importInput.current?.click()}>
-                  <Download size={18} />
-                  Импорт JSON
-                </button>
-                <button type="button" onClick={() => void exportPowerPoint()}>
-                  PPT
-                  Экспорт PowerPoint
-                </button>
-              </div>
-            </details>
-            <a className="button-link" href={showHref}>
-              <Eye size={18} />
-              Показ
-            </a>
-          </div>
-          <input
-            hidden
-            ref={importInput}
-            type="file"
-            accept="application/json"
-            onChange={(event) => importPresentation(event.target.files?.[0])}
-          />
-          <input hidden ref={audioInput} type="file" accept="audio/*" onChange={(event) => onAudio(event.target.files?.[0])} />
-        </header>
-        <section className="workspace-bar">
-          <details className="workspace-menu" name="admin-menu">
+          <details className="presentation-menu" name="admin-menu">
             <summary>
-              <Plus size={18} />
-              Презентации
+              <span>{activeRecord?.title ?? presentation.title}</span>
             </summary>
-            <div className="workspace-popover">
-              <strong>Новая презентация</strong>
-              <input value={newPresentationTitle} onChange={(event) => setNewPresentationTitle(event.target.value)} placeholder="Название" />
-              <div className="access-list compact">
-                {authStore.users.map((account) => (
-                  <label className="checkbox-row" key={account.email}>
-                    <input
-                      type="checkbox"
-                      checked={newPresentationEditors.includes(account.email)}
-                      onChange={() => togglePresentationEditor(account.email)}
-                    />
-                    {account.email}
-                  </label>
+            <div className="presentation-popover">
+              <strong>Презентации</strong>
+              <div className="presentation-list">
+                {availableRecords.map((record) => (
+                  <div className={record.id === activeRecord?.id ? 'presentation-row active' : 'presentation-row'} key={record.id}>
+                    <button type="button" onClick={() => setActivePresentationId(record.id)}>
+                      {record.title}
+                    </button>
+                    <button type="button" onClick={() => openEditPresentationDialog(record)} title="Настроить презентацию">
+                      <Pencil size={16} />
+                    </button>
+                  </div>
                 ))}
               </div>
-              <button type="button" onClick={createPresentationRecord}>
+              <button type="button" onClick={openCreatePresentationDialog}>
                 <Plus size={18} />
                 Создать презентацию
               </button>
             </div>
           </details>
-          {isOwner && (
-            <details className="workspace-menu" name="admin-menu">
-              <summary>
-                <UserPlus size={18} />
-                Аккаунты
-              </summary>
-              <div className="workspace-popover accounts-popover">
-                <strong>Управление аккаунтами</strong>
+          <details className="workspace-menu toolbar-menu" name="admin-menu">
+            <summary>
+              <UserPlus size={18} />
+              Аккаунты
+            </summary>
+            <div className="workspace-popover accounts-popover toolbar-popover">
+              <strong>{isOwner ? 'Управление аккаунтами' : user.email}</strong>
+              {isOwner && (
+                <>
                 <input value={newUserEmail} onChange={(event) => setNewUserEmail(event.target.value)} placeholder="Логин" />
                 <input type="password" value={newUserPassword} onChange={(event) => setNewUserPassword(event.target.value)} placeholder="Пароль" />
                 <button type="button" onClick={createUser}>
@@ -1046,14 +988,98 @@ function AdminView({
                     </span>
                   ))}
                 </div>
+                </>
+              )}
+              <button type="button" onClick={onSwitchAccount}>
+                <Lock size={18} />
+                Сменить аккаунт
+              </button>
+            </div>
+          </details>
+          <div className="toolbar-actions">
+            <div className="action-group" aria-label="История и сохранение">
+              <button type="button" onClick={undo} disabled={!canUndo} title="Отменить">
+                <ArrowLeft size={18} />
+              </button>
+              <button
+                className={isDirty ? 'primary small-primary' : ''}
+                type="button"
+                onClick={() => savePresentation(presentation)}
+                disabled={!isDirty}
+                title="Сохранить"
+              >
+                <Save size={18} />
+              </button>
+              <button className="reset-action" type="button" onClick={() => resetVotes()} title="Обнулить все ответы">
+                <RotateCcw size={18} />
+              </button>
+            </div>
+            <button className="primary small-primary" type="button" onClick={() => void publishPresentation()} title="Опубликовать для других устройств">
+              <Upload size={18} />
+              Опубликовать
+            </button>
+            <button className={audioName ? 'icon-on' : ''} type="button" onClick={() => audioInput.current?.click()} title={audioName ? 'Заменить трек' : 'Добавить трек'}>
+              <Plus size={18} />
+            </button>
+            <details className="action-menu align-right" name="admin-menu">
+              <summary>
+                <FileUp size={18} />
+              </summary>
+              <div className="action-popover">
+                <button type="button" onClick={exportPresentation}>
+                  <Upload size={18} />
+                  Экспорт JSON
+                </button>
+                <button type="button" onClick={() => importInput.current?.click()}>
+                  <Download size={18} />
+                  Импорт JSON
+                </button>
+                <button type="button" onClick={() => void exportPowerPoint()}>
+                  PPT
+                  Экспорт PowerPoint
+                </button>
               </div>
             </details>
-          )}
-          <button type="button" onClick={onSwitchAccount}>
-            <Lock size={18} />
-            Сменить аккаунт
-          </button>
-        </section>
+            <a className="button-link" href={showHref} target="_blank" rel="noreferrer">
+              <Eye size={18} />
+              Показ
+            </a>
+          </div>
+          <input
+            hidden
+            ref={importInput}
+            type="file"
+            accept="application/json"
+            onChange={(event) => importPresentation(event.target.files?.[0])}
+          />
+          <input hidden ref={audioInput} type="file" accept="audio/*" onChange={(event) => onAudio(event.target.files?.[0])} />
+        </header>
+        {presentationDialog && (
+          <div className="presentation-dialog" role="dialog" aria-modal="true">
+            <div className="presentation-dialog-panel">
+              <strong>{presentationDialog === 'create' ? 'Новая презентация' : 'Настройка презентации'}</strong>
+              <input value={newPresentationTitle} onChange={(event) => setNewPresentationTitle(event.target.value)} placeholder="Название" />
+              <div className="access-list compact">
+                {authStore.users.map((account) => (
+                  <label className="checkbox-row" key={account.email}>
+                    <input
+                      type="checkbox"
+                      checked={newPresentationEditors.includes(account.email)}
+                      onChange={() => togglePresentationEditor(account.email)}
+                    />
+                    {account.email}
+                  </label>
+                ))}
+              </div>
+              <div className="dialog-actions">
+                <button type="button" onClick={() => setPresentationDialog(null)}>Отмена</button>
+                <button className="primary" type="button" onClick={presentationDialog === 'create' ? createPresentationRecord : savePresentationRecordSettings}>
+                  {presentationDialog === 'create' ? 'Создать' : 'Сохранить'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         {publishStatus && <div className="publish-status">{publishStatus}</div>}
 
         {selected && (
@@ -1194,11 +1220,15 @@ function PollBuilder({ poll, onChange, onReset }: { poll: Poll; onChange: (poll:
             <GripVertical className="drag-marker" size={16} />
             <button
               type="button"
-              className={poll.correctOptionId === option.id ? 'icon-on' : ''}
-              onClick={() => onChange({ ...poll, correctOptionId: poll.correctOptionId === option.id ? undefined : option.id })}
+              className={getCorrectOptionIds(poll).includes(option.id) ? 'icon-on' : ''}
+              onClick={() => {
+                const selected = getCorrectOptionIds(poll)
+                const next = selected.includes(option.id) ? selected.filter((id) => id !== option.id) : [...selected, option.id]
+                onChange({ ...poll, correctOptionId: next[0], correctOptionIds: next })
+              }}
               title="Правильный ответ"
             >
-              {poll.correctOptionId === option.id ? <Check size={16} /> : <Circle size={16} />}
+              {getCorrectOptionIds(poll).includes(option.id) ? <Check size={16} /> : <Circle size={16} />}
             </button>
             <input value={option.text} onChange={(event) => updateOption(option.id, event.target.value)} />
             <button type="button" onClick={() => removeOption(option.id)} title="Удалить ответ">
@@ -1343,22 +1373,6 @@ function SpeakerView({ userId = DEFAULT_USER_ID }: { userId?: string }) {
     setIndex((value) => Math.max(value - 1, 0))
   }
 
-  const refreshPublishedPresentation = async () => {
-    setRemotePresentationReady(false)
-    setRemotePresentationError(false)
-    const remotePresentation = await readRemotePresentation(userId)
-    if (remotePresentation) {
-      setPresentation(remotePresentation as Presentation)
-      writeJson(presentationCacheKey, remotePresentation)
-      setIndex(0)
-      setShowResults(false)
-      setRemotePresentationReady(true)
-      return
-    }
-    setRemotePresentationError(true)
-    setRemotePresentationReady(true)
-  }
-
   const toggleMusic = () => {
     const player = audioRef.current
     if (!player || !audio) return
@@ -1425,24 +1439,8 @@ function SpeakerView({ userId = DEFAULT_USER_ID }: { userId?: string }) {
         pollSession={pollSessions[slide.id]}
         userId={userId}
       />
-      <div className="presenter-controls">
-        <button type="button" onClick={previous}>
-          <ArrowLeft size={20} />
-        </button>
-        <span>
-          {index + 1} / {presentation.slides.length}
-        </span>
-        <button type="button" onClick={next}>
-          <ArrowRight size={20} />
-        </button>
-        {audio && (
-          <button type="button" onClick={toggleMusic} title="Включить или выключить музыку">
-            {musicPlaying ? <VolumeX size={20} /> : <Music size={20} />}
-          </button>
-        )}
-        <button type="button" onClick={() => void refreshPublishedPresentation()} title="Обновить опубликованную презентацию">
-          <RotateCcw size={20} />
-        </button>
+      <div className="presenter-controls compact">
+        <span>{index + 1}</span>
       </div>
       {audio && <audio ref={audioRef} src={audio.data} onEnded={() => setMusicPlaying(false)} />}
     </main>
@@ -1472,7 +1470,7 @@ function SlideCanvas({
   const total = Object.values(votes).reduce((sum, count) => sum + count, 0)
 
   return (
-    <div className={`slide-canvas transition-${slide.transition} ${slide.poll?.theme === 'dark' ? 'poll-dark' : ''}`}>
+    <div className={`slide-canvas transition-${slide.transition} mode-${mode} ${slide.poll?.theme === 'dark' ? 'poll-dark' : ''}`}>
       {slide.image ? <img className="slide-bg" src={slide.image} alt="" /> : <div className="slide-bg placeholder-bg" />}
       {Boolean(slide.imageTone) && (
         <div
@@ -1506,9 +1504,20 @@ function SlideCanvas({
             {sortedOptions.map((option) => {
               const count = votes[option.id] ?? 0
               const percent = total ? Math.round((count / total) * 100) : 0
-              const correct = slide.poll?.correctOptionId === option.id
+              const correct = slide.poll ? getCorrectOptionIds(slide.poll).includes(option.id) : false
+              const originalIndex = slide.poll?.options.findIndex((item) => item.id === option.id) ?? 0
+              const sortedIndex = sortedOptions.findIndex((item) => item.id === option.id)
               return (
-                <div className={correct && mode === 'results' ? 'answer-row correct' : 'answer-row'} key={option.id}>
+                <div
+                  className={correct && mode === 'results' ? 'answer-row correct' : 'answer-row'}
+                  key={option.id}
+                  style={
+                    {
+                      '--result-offset': `${(originalIndex - sortedIndex) * 112}%`,
+                      '--result-delay': `${sortedIndex * 70}ms`,
+                    } as CSSProperties
+                  }
+                >
                   <span>{option.text}</span>
                   {mode === 'results' && (
                     <strong>
@@ -1545,6 +1554,7 @@ function ParticipantView({ slideId }: { slideId: string }) {
   const [selected, setSelected] = useState<string | null>(() => localStorage.getItem(answerKey))
   const [answerError, setAnswerError] = useState('')
   const [remotePollSession, setRemotePollSession] = useState<RemotePollSession | null>(null)
+  const [scanError, setScanError] = useState('')
   const shortPollData = useMemo(() => shortPollDataFromParam(pollParam), [pollParam])
   const pollFromUrl = useMemo(() => {
     const decoded = decodePollUrlData(pollParam)
@@ -1619,6 +1629,45 @@ function ParticipantView({ slideId }: { slideId: string }) {
     }
   }, [openPollsKey, presentationKey, userId])
 
+  const startQrScan = async () => {
+    setScanError('')
+    const detectorConstructor = (window as unknown as { BarcodeDetector?: new (options?: { formats?: string[] }) => { detect: (source: CanvasImageSource) => Promise<Array<{ rawValue: string }>> } }).BarcodeDetector
+    if (!detectorConstructor || !navigator.mediaDevices?.getUserMedia) {
+      setScanError('Браузер не поддерживает сканирование QR-кода с этой страницы. Откройте камеру телефона и наведите ее на следующий QR-код.')
+      return
+    }
+    let stream: MediaStream | null = null
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+      const video = document.createElement('video')
+      video.srcObject = stream
+      video.muted = true
+      video.playsInline = true
+      await video.play()
+      const detector = new detectorConstructor({ formats: ['qr_code'] })
+      const startedAt = Date.now()
+      const scan = async (): Promise<void> => {
+        const codes = await detector.detect(video)
+        const code = codes[0]?.rawValue
+        if (code) {
+          stream?.getTracks().forEach((track) => track.stop())
+          window.location.href = code
+          return
+        }
+        if (Date.now() - startedAt > 12000) {
+          stream?.getTracks().forEach((track) => track.stop())
+          setScanError('QR-код не найден. Попробуйте открыть камеру телефона и отсканировать код обычным способом.')
+          return
+        }
+        window.setTimeout(() => void scan(), 300)
+      }
+      await scan()
+    } catch {
+      stream?.getTracks().forEach((track) => track.stop())
+      setScanError('Не удалось открыть камеру. Проверьте разрешение браузера на доступ к камере.')
+    }
+  }
+
   const answer = async (optionId: string) => {
     if (!poll || selected || !isOpen) return
     const votes = readJson<VoteStore>(votesKey, {})
@@ -1666,7 +1715,10 @@ function ParticipantView({ slideId }: { slideId: string }) {
     )
   }
 
-  const correct = poll.correctOptionId ? poll.options.find((option) => option.id === poll.correctOptionId)?.text : ''
+  const correctAnswers = getCorrectOptionIds(poll)
+    .map((id) => poll.options.find((option) => option.id === id)?.text)
+    .filter(Boolean)
+    .join(', ')
 
   return (
     <main className="participant-screen">
@@ -1686,7 +1738,12 @@ function ParticipantView({ slideId }: { slideId: string }) {
         ) : selected ? (
           <>
             <h1>Спасибо!</h1>
-            {correct && <p>Правильный ответ: {correct}</p>}
+            {correctAnswers && <p>Правильный ответ: {correctAnswers}</p>}
+            <button type="button" onClick={() => void startQrScan()}>
+              <QrCode size={18} />
+              Сканировать QR-код
+            </button>
+            {scanError && <p className="form-error">{scanError}</p>}
             {answerError && <p className="form-error">{answerError}</p>}
           </>
         ) : (
