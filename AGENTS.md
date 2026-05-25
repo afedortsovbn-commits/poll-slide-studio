@@ -23,9 +23,24 @@ Before delivery, run lint and build, then verify admin, speaker, and participant
 
 ## Telegram Delivery
 
-If the user asks to send a finished artifact to Telegram, use the shared workspace rule:
-- read the bot token from `E:\CodexProj\telegram_bot_token.txt`;
-- never print, commit, or store the token in project files;
-- send to the default user chat `chat_id=809586162`;
-- use Telegram Bot API `sendDocument` for files and `sendMessage` for short text;
-- if network access requires approval, request it through the tool and continue after approval.
+Этот проект использует общий Telegram-мост рабочей папки Codex:
+
+`E:\CodexProj\codex-telegram.ps1`
+
+Codex должен по умолчанию использовать мост для уведомлений о завершении этапов, запросов локальных разрешений, уведомлений о системных approval Codex, отправки ссылок и файлов, а также чтения входящих Telegram-задач для этого проекта.
+
+Типовые команды из корня проекта:
+
+```powershell
+E:\CodexProj\codex-telegram.ps1 notify --message "Этап завершен"
+E:\CodexProj\codex-telegram.ps1 request-approval --title "Запуск проверки" --details "Нужно выполнить команду для проекта"
+E:\CodexProj\codex-telegram.ps1 codex-approval-needed --title "Sandbox approval" --details "Подтверждение возможно только в интерфейсе Codex"
+E:\CodexProj\codex-telegram.ps1 check-similar --title "Запуск проверки"
+E:\CodexProj\codex-telegram.ps1 read-inbox --limit 20
+E:\CodexProj\codex-telegram.ps1 open-tasks --limit 20
+E:\CodexProj\codex-telegram.ps1 send-link --title "Готовая ссылка" --url "https://example.com"
+```
+
+Перед повторяющимся действием сначала проверять сохраненное согласие через `check-similar`. Системные approval Codex все равно запрашиваются через интерфейс Codex; если Telegram-согласование невозможно, сначала отправить уведомление через `codex-approval-needed`.
+
+Когда пришла Telegram-задача, поставить ей статус `started`, выполнить работу в проекте, запустить доступные проверки, отправить краткий статус через `notify`, затем поставить статус `done`.
