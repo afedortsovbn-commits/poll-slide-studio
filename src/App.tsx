@@ -598,15 +598,17 @@ function AdminView({
         if (cancelled) return
         if (remotePresentation) {
           const nextPresentation = remotePresentation as Presentation
-          const latestRecords = readAllPresentationRecords()
-          if (!latestRecords.length) return
-          const records = latestRecords.map((record) =>
-            record.id === activeRecordId
-              ? { ...record, title: nextPresentation.title || record.title, presentation: nextPresentation }
-              : record,
-          )
-          setPresentationRecords(records)
-          writePresentationRecords(records)
+          setPresentationRecords((currentRecords) => {
+            const latestRecords = readAllPresentationRecords()
+            const sourceRecords = latestRecords.length ? latestRecords : currentRecords
+            const records = sourceRecords.map((record) =>
+              record.id === activeRecordId
+                ? { ...record, title: nextPresentation.title || record.title, presentation: nextPresentation }
+                : record,
+            )
+            writePresentationRecords(records)
+            return records
+          })
           writeJson(presentationKey, nextPresentation)
           setPresentationBase(nextPresentation)
           setPresentationState(nextPresentation)

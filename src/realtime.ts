@@ -114,22 +114,33 @@ const parseRemoteJson = <T,>(data: unknown, fallback: T) => {
   return fallback
 }
 
+const parseRemoteRecord = <T,>(data: unknown, fallback: T) => {
+  if (!data || typeof data !== 'object') return null
+  const record = data as { updatedAt?: unknown }
+  return {
+    value: parseRemoteJson<T>(data, fallback),
+    updatedAt: typeof record.updatedAt === 'number' ? record.updatedAt : 0,
+  }
+}
+
 const saveRemoteJson = async (name: string, value: unknown) => {
   const realtimeUrls = realtimeStatePaths(name).map(realtimeRestUrl).filter(Boolean)
   if (realtimeUrls.length) {
+    let saved = false
+    const payload = JSON.stringify({ value, updatedAt: Date.now() })
     for (const realtimeUrl of realtimeUrls) {
       try {
         const response = await fetchWithTimeout(realtimeUrl, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ value, updatedAt: Date.now() }),
+          body: payload,
         })
-        if (response.ok) return true
+        if (response.ok) saved = true
       } catch {
         // Try the next compatible path before reporting failure.
       }
     }
-    return false
+    return saved
   }
 
   const target = stateDoc(name)
@@ -144,18 +155,20 @@ const saveRemoteJson = async (name: string, value: unknown) => {
 
 const readRemoteJson = async <T,>(name: string, fallback: T) => {
   const realtimeUrls = realtimeStatePaths(name).map(realtimeRestUrl).filter(Boolean)
+  let newest: { value: T; updatedAt: number } | null = null
   for (const realtimeUrl of realtimeUrls) {
     try {
       const response = await fetchWithTimeout(realtimeUrl, undefined, 60000)
       if (!response.ok) continue
       const data = await response.json()
       if (!data) continue
-      return parseRemoteJson<T>(data, fallback)
+      const parsed = parseRemoteRecord<T>(data, fallback)
+      if (parsed && (!newest || parsed.updatedAt >= newest.updatedAt)) newest = parsed
     } catch {
       // Try the next compatible path.
     }
   }
-  return fallback
+  return newest?.value ?? fallback
 }
 
 const subscribeRemoteJson = <T,>(
@@ -172,6 +185,7 @@ const subscribeRemoteJson = <T,>(
     let stopped = false
     const read = async () => {
       let hadReadablePath = false
+      let newest: { value: T; updatedAt: number } | null = null
       for (const realtimeUrl of realtimeUrls) {
         try {
           const response = await fetchWithTimeout(realtimeUrl, undefined, 60000)
@@ -179,16 +193,19 @@ const subscribeRemoteJson = <T,>(
           hadReadablePath = true
           const data = await response.json()
           if (!data) continue
-          const value = parseRemoteJson<T>(data, fallback)
-          const next = JSON.stringify(value)
-          if (next !== previous) {
-            previous = next
-            onChange(value)
-          }
-          return
+          const parsed = parseRemoteRecord<T>(data, fallback)
+          if (parsed && (!newest || parsed.updatedAt >= newest.updatedAt)) newest = parsed
         } catch {
           // Try the next compatible path before falling back.
         }
+      }
+      if (newest) {
+        const next = JSON.stringify(newest.value)
+        if (next !== previous) {
+          previous = next
+          onChange(newest.value)
+        }
+        return
       }
       if (hadReadablePath) {
         const next = JSON.stringify(fallback)
