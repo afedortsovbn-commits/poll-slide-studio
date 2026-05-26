@@ -1,4 +1,4 @@
-import { type CSSProperties, useEffect, useMemo, useRef, useState } from 'react'
+import { type CSSProperties, type TouchEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
 import {
   ArrowLeft,
@@ -237,6 +237,8 @@ const readPresentationRecords = (email: string): PresentationRecord[] => {
 const writePresentationRecords = (records: PresentationRecord[]) => {
   writeJson(PRESENTATION_RECORDS_KEY, records)
 }
+
+const readAllPresentationRecords = () => readJson<PresentationRecord[]>(PRESENTATION_RECORDS_KEY, [])
 
 const toBase64Url = (value: string) => {
   const bytes = new TextEncoder().encode(value)
@@ -591,25 +593,28 @@ function AdminView({
     writePresentationRecords(records)
   }
 
-  const setPresentation = (next: Presentation, remember = true) => {
-    if (remember) setHistory((items) => [presentation, ...items].slice(0, 3))
-    setPresentationState(next)
-    setPresentationBase(next)
-    const records = presentationRecords.map((record) =>
-      record.id === scope ? { ...record, title: next.title, presentation: next } : record,
+  const persistActivePresentation = (next: Presentation) => {
+    const recordId = activeRecord?.id ?? scope
+    const latestRecords = readAllPresentationRecords()
+    const sourceRecords = latestRecords.length ? latestRecords : presentationRecords
+    const records = sourceRecords.map((record) =>
+      record.id === recordId ? { ...record, title: next.title, presentation: next } : record,
     )
     persistRecords(records)
     writeJson(presentationKey, next)
   }
 
+  const setPresentation = (next: Presentation, remember = true) => {
+    if (remember) setHistory((items) => [presentation, ...items].slice(0, 3))
+    setPresentationState(next)
+    setPresentationBase(next)
+    persistActivePresentation(next)
+  }
+
   const savePresentation = (next: Presentation) => {
     setPresentationState(next)
     setPresentationBase(next)
-    const records = presentationRecords.map((record) =>
-      record.id === scope ? { ...record, title: next.title, presentation: next } : record,
-    )
-    persistRecords(records)
-    writeJson(presentationKey, next)
+    persistActivePresentation(next)
   }
 
   const undo = () => {
@@ -672,7 +677,9 @@ function AdminView({
       editorEmails: editors,
       presentation: nextPresentation,
     }
-    persistRecords([...presentationRecords, record])
+    const latestRecords = readAllPresentationRecords()
+    persistRecords([...(latestRecords.length ? latestRecords : presentationRecords), record])
+    writeJson(`${PRESENTATION_KEY}.record.${record.id}`, nextPresentation)
     loadedRecordId.current = record.id
     setActivePresentationId(record.id)
     setPresentationState(nextPresentation)
@@ -688,17 +695,19 @@ function AdminView({
     if (!editingPresentationId) return
     const title = newPresentationTitle.trim() || 'Новая презентация'
     const editors = Array.from(new Set([user.email, ...newPresentationEditors]))
-    const records = presentationRecords.map((record) =>
+    const latestRecords = readAllPresentationRecords()
+    const sourceRecords = latestRecords.length ? latestRecords : presentationRecords
+    const nextActivePresentation = editingPresentationId === activeRecord?.id ? { ...presentation, title } : null
+    const records = sourceRecords.map((record) =>
       record.id === editingPresentationId
-        ? { ...record, title, editorEmails: editors, presentation: { ...record.presentation, title } }
+        ? { ...record, title, editorEmails: editors, presentation: nextActivePresentation ?? { ...record.presentation, title } }
         : record,
     )
     persistRecords(records)
-    if (editingPresentationId === activeRecord?.id) {
-      const nextPresentation = { ...presentation, title }
-      setPresentationState(nextPresentation)
-      setPresentationBase(nextPresentation)
-      writeJson(presentationKey, nextPresentation)
+    if (nextActivePresentation) {
+      setPresentationState(nextActivePresentation)
+      setPresentationBase(nextActivePresentation)
+      writeJson(presentationKey, nextActivePresentation)
     }
     setPresentationDialog(null)
     closeMenus()
@@ -904,9 +913,8 @@ function AdminView({
   }
 
   const publishPresentation = async () => {
-    const nextPresentation = { ...presentation, title: activeRecord?.title ?? presentation.title }
+    const nextPresentation = { ...presentation, title: presentation.title || activeRecord?.title || '' }
     savePresentation(nextPresentation)
-    writeJson(presentationKey, nextPresentation)
     setPublishStatus('Публикуем презентацию...')
     const saved = await saveRemotePresentation(nextPresentation, scope)
     setPublishStatus(
@@ -1316,6 +1324,7 @@ function SpeakerView({ userId = DEFAULT_USER_ID }: { userId?: string }) {
   const [showResults, setShowResults] = useState(false)
   const previousOpenPollKey = useRef('')
   const audioRef = useRef<HTMLAudioElement>(null)
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null)
   const slide = presentation.slides[index]
 
   useEffect(() => {
@@ -1411,6 +1420,24 @@ function SpeakerView({ userId = DEFAULT_USER_ID }: { userId?: string }) {
     setIndex((value) => Math.max(value - 1, 0))
   }
 
+  const onTouchStart = (event: TouchEvent<HTMLElement>) => {
+    const touch = event.changedTouches[0]
+    if (!touch) return
+    touchStartRef.current = { x: touch.clientX, y: touch.clientY }
+  }
+
+  const onTouchEnd = (event: TouchEvent<HTMLElement>) => {
+    const start = touchStartRef.current
+    const touch = event.changedTouches[0]
+    touchStartRef.current = null
+    if (!start || !touch) return
+    const deltaX = touch.clientX - start.x
+    const deltaY = touch.clientY - start.y
+    if (Math.abs(deltaX) < 45 || Math.abs(deltaX) < Math.abs(deltaY) * 1.3) return
+    if (deltaX < 0) next()
+    else previous()
+  }
+
   const toggleMusic = () => {
     const player = audioRef.current
     if (!player || !audio) return
@@ -1468,7 +1495,7 @@ function SpeakerView({ userId = DEFAULT_USER_ID }: { userId?: string }) {
   if (!slide) return null
 
   return (
-    <main className="presenter-screen">
+    <main className="presenter-screen" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
       <SlideCanvas
         key={`${slide.id}-${showResults}`}
         slide={slide}
