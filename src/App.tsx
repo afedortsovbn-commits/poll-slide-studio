@@ -235,7 +235,7 @@ const readPresentationRecords = (email: string): PresentationRecord[] => {
 }
 
 const writePresentationRecords = (records: PresentationRecord[]) => {
-  writeJson(PRESENTATION_RECORDS_KEY, records)
+  return writeJson(PRESENTATION_RECORDS_KEY, records)
 }
 
 const readAllPresentationRecords = () => readJson<PresentationRecord[]>(PRESENTATION_RECORDS_KEY, [])
@@ -544,6 +544,7 @@ function AdminView({
   const [audioName, setAudioName] = useState(() => readJson<PresentationAudio | null>(PRESENTATION_AUDIO_KEY, null)?.name ?? '')
   const [draggedSlideId, setDraggedSlideId] = useState<string | null>(null)
   const [publishStatus, setPublishStatus] = useState('')
+  const [saveStatus, setSaveStatus] = useState('')
   const [newUserEmail, setNewUserEmail] = useState('')
   const [newUserPassword, setNewUserPassword] = useState('')
   const [newPresentationTitle, setNewPresentationTitle] = useState('')
@@ -558,6 +559,7 @@ function AdminView({
   const slideListRef = useRef<HTMLDivElement>(null)
   const loadedRecordId = useRef(activeRecord?.id ?? '')
   const isOwner = authStore.users[0]?.email === user.email
+  const activeRecordId = activeRecord?.id ?? ''
   const canUndo = history.length > 0
   const closeMenus = () => setOpenMenu(null)
   const isDirty = JSON.stringify(presentation) !== JSON.stringify(presentationBase)
@@ -588,9 +590,41 @@ function AdminView({
     setHistory([])
   }, [activeRecord])
 
+  useEffect(() => {
+    if (!firebaseEnabled || !activeRecordId) return undefined
+    let cancelled = false
+    void readRemotePresentation(scope)
+      .then((remotePresentation) => {
+        if (cancelled) return
+        if (remotePresentation) {
+          const nextPresentation = remotePresentation as Presentation
+          const latestRecords = readAllPresentationRecords()
+          if (!latestRecords.length) return
+          const records = latestRecords.map((record) =>
+            record.id === activeRecordId
+              ? { ...record, title: nextPresentation.title || record.title, presentation: nextPresentation }
+              : record,
+          )
+          setPresentationRecords(records)
+          writePresentationRecords(records)
+          writeJson(presentationKey, nextPresentation)
+          setPresentationBase(nextPresentation)
+          setPresentationState(nextPresentation)
+          setSelectedId(nextPresentation.slides[0]?.id ?? '')
+        }
+        setSaveStatus('')
+      })
+      .catch(() => {
+        if (!cancelled) setSaveStatus('')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [activeRecordId, presentationKey, scope])
+
   const persistRecords = (records: PresentationRecord[]) => {
     setPresentationRecords(records)
-    writePresentationRecords(records)
+    return writePresentationRecords(records)
   }
 
   const persistActivePresentation = (next: Presentation) => {
@@ -600,21 +634,38 @@ function AdminView({
     const records = sourceRecords.map((record) =>
       record.id === recordId ? { ...record, title: next.title, presentation: next } : record,
     )
-    persistRecords(records)
-    writeJson(presentationKey, next)
+    const recordsSaved = persistRecords(records)
+    const presentationSaved = writeJson(presentationKey, next)
+    return recordsSaved && presentationSaved
   }
 
   const setPresentation = (next: Presentation, remember = true) => {
     if (remember) setHistory((items) => [presentation, ...items].slice(0, 3))
     setPresentationState(next)
     setPresentationBase(next)
-    persistActivePresentation(next)
+    const savedLocally = persistActivePresentation(next)
+    if (!savedLocally) {
+      setSaveStatus('Локальный кэш переполнен. Нажмите «Сохранить», чтобы записать изменения в базу.')
+    }
   }
 
-  const savePresentation = (next: Presentation) => {
+  const savePresentation = async (next: Presentation) => {
     setPresentationState(next)
     setPresentationBase(next)
-    persistActivePresentation(next)
+    const savedLocally = persistActivePresentation(next)
+    setSaveStatus(savedLocally ? 'Сохраняем в базу...' : 'Локальный кэш переполнен. Сохраняем в базу...')
+    const savedRemotely = firebaseEnabled ? await saveRemotePresentation(next, scope) : true
+    setSaveStatus(
+      savedRemotely
+        ? savedLocally
+          ? 'Сохранено'
+          : 'Сохранено в базе. Локальный кэш браузера переполнен.'
+        : 'Не удалось сохранить в базу. Проверьте подключение и правила Realtime Database.',
+    )
+    window.setTimeout(() => {
+      setSaveStatus((current) => (current === 'Сохранено' ? '' : current))
+    }, 2500)
+    return savedLocally && savedRemotely
   }
 
   const undo = () => {
@@ -708,6 +759,9 @@ function AdminView({
       setPresentationState(nextActivePresentation)
       setPresentationBase(nextActivePresentation)
       writeJson(presentationKey, nextActivePresentation)
+      void saveRemotePresentation(nextActivePresentation, scope).then((saved) => {
+        setSaveStatus(saved ? 'Сохранено' : 'Не удалось сохранить название в базу.')
+      })
     }
     setPresentationDialog(null)
     closeMenus()
@@ -914,7 +968,7 @@ function AdminView({
 
   const publishPresentation = async () => {
     const nextPresentation = { ...presentation, title: presentation.title || activeRecord?.title || '' }
-    savePresentation(nextPresentation)
+    await savePresentation(nextPresentation)
     setPublishStatus('Публикуем презентацию...')
     const saved = await saveRemotePresentation(nextPresentation, scope)
     setPublishStatus(
@@ -1051,7 +1105,7 @@ function AdminView({
               <button
                 className={isDirty ? 'primary small-primary' : ''}
                 type="button"
-                onClick={() => savePresentation(presentation)}
+                onClick={() => void savePresentation(presentation)}
                 title={isDirty ? 'Сохранить изменения' : 'Сохранено автоматически'}
               >
                 <Save size={18} />
@@ -1126,6 +1180,7 @@ function AdminView({
             </div>
           </div>
         )}
+        {saveStatus && <div className="publish-status save-status">{saveStatus}</div>}
         {publishStatus && <div className="publish-status">{publishStatus}</div>}
 
         {selected && (
