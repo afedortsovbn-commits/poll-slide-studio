@@ -7,10 +7,11 @@ import {
   Copy,
   Download,
   Eye,
-  FileUp,
+  FolderInput,
   GripVertical,
   ImagePlus,
   Lock,
+  Music,
   Pencil,
   Plus,
   QrCode,
@@ -19,6 +20,7 @@ import {
   Trash2,
   Upload,
   UserPlus,
+  X,
 } from 'lucide-react'
 import {
   firebaseEnabled,
@@ -546,21 +548,43 @@ function AdminView({
   const [newPresentationEditors, setNewPresentationEditors] = useState<string[]>([user.email])
   const [presentationDialog, setPresentationDialog] = useState<'create' | 'edit' | null>(null)
   const [editingPresentationId, setEditingPresentationId] = useState('')
+  const [openMenu, setOpenMenu] = useState<string | null>(null)
   const selected = presentation.slides.find((slide) => slide.id === selectedId) ?? presentation.slides[0]
   const fileInput = useRef<HTMLInputElement>(null)
   const audioInput = useRef<HTMLInputElement>(null)
   const importInput = useRef<HTMLInputElement>(null)
   const slideListRef = useRef<HTMLDivElement>(null)
+  const loadedRecordId = useRef(activeRecord?.id ?? '')
   const isOwner = authStore.users[0]?.email === user.email
   const canUndo = history.length > 0
+  const closeMenus = () => setOpenMenu(null)
   const isDirty = JSON.stringify(presentation) !== JSON.stringify(presentationBase)
 
-  if (activeRecord && presentationBase !== activeRecord.presentation) {
+  useEffect(() => {
+    const closeOnPointer = (event: PointerEvent) => {
+      if (!(event.target instanceof Element)) return
+      if (!event.target.closest('.presentation-menu, .workspace-menu, .action-menu, .presentation-dialog')) closeMenus()
+    }
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') closeMenus()
+    }
+    document.addEventListener('pointerdown', closeOnPointer)
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.removeEventListener('pointerdown', closeOnPointer)
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!activeRecord || loadedRecordId.current === activeRecord.id) return
+    loadedRecordId.current = activeRecord.id
     setPresentationBase(activeRecord.presentation)
     setPresentationState(activeRecord.presentation)
     setSelectedId(activeRecord.presentation.slides[0]?.id ?? '')
+    setSelectedSlideIds([])
     setHistory([])
-  }
+  }, [activeRecord])
 
   const persistRecords = (records: PresentationRecord[]) => {
     setPresentationRecords(records)
@@ -579,7 +603,13 @@ function AdminView({
   }
 
   const savePresentation = (next: Presentation) => {
-    setPresentation(next, false)
+    setPresentationState(next)
+    setPresentationBase(next)
+    const records = presentationRecords.map((record) =>
+      record.id === scope ? { ...record, title: next.title, presentation: next } : record,
+    )
+    persistRecords(records)
+    writeJson(presentationKey, next)
   }
 
   const undo = () => {
@@ -643,6 +673,7 @@ function AdminView({
       presentation: nextPresentation,
     }
     persistRecords([...presentationRecords, record])
+    loadedRecordId.current = record.id
     setActivePresentationId(record.id)
     setPresentationState(nextPresentation)
     setPresentationBase(nextPresentation)
@@ -650,6 +681,7 @@ function AdminView({
     setNewPresentationTitle('')
     setNewPresentationEditors([user.email])
     setPresentationDialog(null)
+    closeMenus()
   }
 
   const savePresentationRecordSettings = () => {
@@ -663,9 +695,13 @@ function AdminView({
     )
     persistRecords(records)
     if (editingPresentationId === activeRecord?.id) {
-      setPresentation({ ...presentation, title }, false)
+      const nextPresentation = { ...presentation, title }
+      setPresentationState(nextPresentation)
+      setPresentationBase(nextPresentation)
+      writeJson(presentationKey, nextPresentation)
     }
     setPresentationDialog(null)
+    closeMenus()
   }
 
   const togglePresentationEditor = (email: string) => {
@@ -868,9 +904,11 @@ function AdminView({
   }
 
   const publishPresentation = async () => {
-    writeJson(presentationKey, presentation)
+    const nextPresentation = { ...presentation, title: activeRecord?.title ?? presentation.title }
+    savePresentation(nextPresentation)
+    writeJson(presentationKey, nextPresentation)
     setPublishStatus('Публикуем презентацию...')
-    const saved = await saveRemotePresentation(presentation, scope)
+    const saved = await saveRemotePresentation(nextPresentation, scope)
     setPublishStatus(
       saved
         ? 'Презентация опубликована для других устройств.'
@@ -937,11 +975,12 @@ function AdminView({
 
       <section className="editor">
         <header className="toolbar">
-          <details className="presentation-menu" name="admin-menu">
+          <details className="presentation-menu" open={openMenu === 'presentations'} onToggle={(event) => setOpenMenu(event.currentTarget.open ? 'presentations' : null)}>
             <summary>
               <span>{activeRecord?.title ?? presentation.title}</span>
             </summary>
             <div className="presentation-popover">
+              <button className="popover-close" type="button" onClick={closeMenus} title="Закрыть"><X size={16} /></button>
               <strong>Презентации</strong>
               <div className="presentation-list">
                 {availableRecords.map((record) => (
@@ -961,12 +1000,12 @@ function AdminView({
               </button>
             </div>
           </details>
-          <details className="workspace-menu toolbar-menu" name="admin-menu">
+          <details className="workspace-menu toolbar-menu" open={openMenu === 'accounts'} onToggle={(event) => setOpenMenu(event.currentTarget.open ? 'accounts' : null)}>
             <summary>
               <UserPlus size={18} />
-              Аккаунты
             </summary>
             <div className="workspace-popover accounts-popover toolbar-popover">
+              <button className="popover-close" type="button" onClick={closeMenus} title="Закрыть"><X size={16} /></button>
               <strong>{isOwner ? 'Управление аккаунтами' : user.email}</strong>
               {isOwner && (
                 <>
@@ -1005,8 +1044,7 @@ function AdminView({
                 className={isDirty ? 'primary small-primary' : ''}
                 type="button"
                 onClick={() => savePresentation(presentation)}
-                disabled={!isDirty}
-                title="Сохранить"
+                title={isDirty ? 'Сохранить изменения' : 'Сохранено автоматически'}
               >
                 <Save size={18} />
               </button>
@@ -1016,25 +1054,25 @@ function AdminView({
             </div>
             <button className="primary small-primary" type="button" onClick={() => void publishPresentation()} title="Опубликовать для других устройств">
               <Upload size={18} />
-              Опубликовать
             </button>
             <button className={audioName ? 'icon-on' : ''} type="button" onClick={() => audioInput.current?.click()} title={audioName ? 'Заменить трек' : 'Добавить трек'}>
-              <Plus size={18} />
+              <Music size={18} />
             </button>
-            <details className="action-menu align-right" name="admin-menu">
+            <details className="action-menu align-right" open={openMenu === 'files'} onToggle={(event) => setOpenMenu(event.currentTarget.open ? 'files' : null)}>
               <summary>
-                <FileUp size={18} />
+                <FolderInput size={18} />
               </summary>
               <div className="action-popover">
-                <button type="button" onClick={exportPresentation}>
+                <button className="popover-close" type="button" onClick={closeMenus} title="Закрыть"><X size={16} /></button>
+                <button type="button" onClick={exportPresentation} title="Экспортировать презентацию в JSON-файл">
                   <Upload size={18} />
                   Экспорт JSON
                 </button>
-                <button type="button" onClick={() => importInput.current?.click()}>
+                <button type="button" onClick={() => importInput.current?.click()} title="Импортировать презентацию из JSON-файла">
                   <Download size={18} />
                   Импорт JSON
                 </button>
-                <button type="button" onClick={() => void exportPowerPoint()}>
+                <button type="button" onClick={() => void exportPowerPoint()} title="Экспортировать презентацию в PowerPoint">
                   PPT
                   Экспорт PowerPoint
                 </button>

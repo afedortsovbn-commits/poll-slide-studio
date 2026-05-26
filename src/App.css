@@ -340,7 +340,7 @@ label {
   z-index: 40;
   display: grid;
   gap: 10px;
-  padding: 12px;
+  padding: 34px 12px 12px;
   background: #ffffff;
   border: 1px solid #cbd5cf;
   border-radius: 8px;
@@ -418,6 +418,11 @@ label {
   flex: 0 0 auto;
 }
 
+.toolbar-menu summary {
+  min-height: 44px;
+  padding: 10px 14px;
+}
+
 .workspace-menu summary {
   min-height: 38px;
   display: inline-flex;
@@ -451,7 +456,7 @@ label {
   z-index: 30;
   display: grid;
   gap: 10px;
-  padding: 14px;
+  padding: 34px 14px 14px;
   background: #ffffff;
   border: 1px solid #cbd5cf;
   border-radius: 8px;
@@ -577,7 +582,7 @@ label {
   z-index: 35;
   display: grid;
   gap: 8px;
-  padding: 10px;
+  padding: 34px 10px 10px;
   background: #ffffff;
   border: 1px solid #cbd5cf;
   border-radius: 8px;
@@ -592,6 +597,19 @@ label {
 .action-popover button {
   width: 100%;
   justify-content: flex-start;
+}
+
+.popover-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 28px !important;
+  min-height: 28px !important;
+  padding: 4px !important;
+  justify-content: center !important;
+  color: #52625a;
+  background: #f2f6f3;
+  border-color: #d5ddd8;
 }
 
 .publish-status {
