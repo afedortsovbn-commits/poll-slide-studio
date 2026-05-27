@@ -1,6 +1,7 @@
 import { type CSSProperties, type TouchEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
 import {
+  Send,
   ArrowLeft,
   Check,
   Circle,
@@ -24,6 +25,7 @@ import {
 } from 'lucide-react'
 import {
   firebaseEnabled,
+  deleteRemotePresentation,
   incrementRemoteVote,
   readRemoteAuthStore,
   readRemotePresentation,
@@ -520,6 +522,10 @@ function AdminGate() {
         </div>
         <h1>Студия интерактивных слайдов</h1>
         <p>{mode === 'login' ? 'Войдите, чтобы управлять презентацией.' : 'Создайте нового пользователя админки.'}</p>
+        <a className="telegram-access" href="https://t.me/Alex_Fedortsov" target="_blank" rel="noreferrer">
+          <span className="telegram-mark"><Send size={14} /></span>
+          Доступ по запросу @Alex_Fedortsov
+        </a>
         <div className="auth-tabs">
           <button className={mode === 'login' ? 'active' : ''} type="button" onClick={() => setMode('login')} disabled={!hasUsers}>
             <Lock size={16} />
@@ -848,6 +854,33 @@ function AdminView({
       void saveRemotePresentation(nextActivePresentation, scope).then((saved) => {
         setSaveStatus(saved ? 'Сохранено' : 'Не удалось сохранить название в базу.')
       })
+    }
+    setPresentationDialog(null)
+    closeMenus()
+  }
+
+  const deletePresentationRecord = () => {
+    if (!editingPresentationId || availableRecords.length < 2) return
+    const latestRecords = readAllPresentationRecords()
+    const sourceRecords = latestRecords.length ? latestRecords : presentationRecords
+    const records = sourceRecords.filter((record) => record.id !== editingPresentationId)
+    const nextAvailable = records.filter((record) => canEditPresentation(record, user.email))
+    persistRecords(records)
+    void deleteRemotePresentation(editingPresentationId)
+    try {
+      localStorage.removeItem(`${PRESENTATION_KEY}.record.${editingPresentationId}`)
+    } catch {
+      // Local cache cleanup is best effort.
+    }
+    if (activeRecord?.id === editingPresentationId) {
+      const nextRecord = nextAvailable[0]
+      setActivePresentationId(nextRecord.id)
+      loadedRecordId.current = nextRecord.id
+      setPresentationState(nextRecord.presentation)
+      setPresentationBase(nextRecord.presentation)
+      setSelectedId(nextRecord.presentation.slides[0]?.id ?? '')
+      setSelectedSlideIds([])
+      setHistory([])
     }
     setPresentationDialog(null)
     closeMenus()
@@ -1258,6 +1291,17 @@ function AdminView({
                 ))}
               </div>
               <div className="dialog-actions">
+                {presentationDialog === 'edit' && (
+                  <button
+                    className="danger-action"
+                    type="button"
+                    onClick={deletePresentationRecord}
+                    disabled={availableRecords.length < 2}
+                  >
+                    <Trash2 size={16} />
+                    Удалить презентацию
+                  </button>
+                )}
                 <button type="button" onClick={() => setPresentationDialog(null)}>Отмена</button>
                 <button className="primary" type="button" onClick={presentationDialog === 'create' ? createPresentationRecord : savePresentationRecordSettings}>
                   {presentationDialog === 'create' ? 'Создать' : 'Сохранить'}

@@ -268,6 +268,21 @@ export const saveRemotePresentation = async (presentation: RemotePresentation, s
   return saveRemoteJson(scopedName('presentation', scope), presentation)
 }
 
+export const deleteRemotePresentation = async (scope = 'default') => {
+  const paths = realtimeStatePaths(scopedName('presentation', scope))
+  const realtimeUrls = paths.map(realtimeRestUrl).filter(Boolean)
+  if (realtimeUrls.length) {
+    await Promise.all(
+      realtimeUrls.map((realtimeUrl) =>
+        fetchWithTimeout(realtimeUrl, { method: 'DELETE' }).catch(() => undefined),
+      ),
+    )
+    return
+  }
+  const target = stateDoc(scopedName('presentation', scope))
+  if (target) await deleteDoc(target).catch(() => undefined)
+}
+
 export const readRemotePresentation = async (scope = 'default') =>
   readRemoteJson<RemotePresentation | null>(scopedName('presentation', scope), null)
 

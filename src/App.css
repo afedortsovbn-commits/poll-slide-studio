@@ -148,6 +148,30 @@ label {
   font-weight: 700;
 }
 
+.telegram-access {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  color: #124c3f;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.telegram-access:hover {
+  color: #0d3b31;
+}
+
+.telegram-mark {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  color: #ffffff;
+  background: #229ed9;
+  border-radius: 50%;
+}
+
 .admin-shell {
   height: 100vh;
   display: grid;
@@ -408,6 +432,11 @@ label {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
+  flex-wrap: wrap;
+}
+
+.dialog-actions .danger-action {
+  margin-right: auto;
 }
 
 .workspace-menu {
@@ -1088,7 +1117,236 @@ label {
   }
 }
 
+@media (max-width: 820px) {
+  body {
+    background: #eef1ed;
+  }
+
+  .auth-screen {
+    align-items: start;
+    padding: 18px;
+  }
+
+  .auth-panel {
+    padding: 22px;
+  }
+
+  .admin-shell {
+    height: auto;
+    min-height: 100vh;
+    display: block;
+    overflow: visible;
+  }
+
+  .slide-list {
+    position: sticky;
+    top: 0;
+    z-index: 45;
+    min-height: 0;
+    max-height: 46vh;
+    padding: 12px;
+    gap: 10px;
+    overflow: hidden;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  }
+
+  .app-title {
+    padding: 2px 2px 6px;
+  }
+
+  .app-title strong {
+    font-size: 15px;
+    line-height: 1.15;
+  }
+
+  .slide-list > button {
+    min-height: 42px;
+  }
+
+  .slides {
+    display: flex;
+    gap: 8px;
+    margin-top: 2px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-bottom: 4px;
+    scroll-snap-type: x proximity;
+  }
+
+  .thumb {
+    flex: 0 0 min(76vw, 260px);
+    min-height: 64px;
+    scroll-snap-align: start;
+  }
+
+  .editor {
+    display: block;
+    min-height: auto;
+    overflow: visible;
+  }
+
+  .toolbar {
+    position: sticky;
+    top: 46vh;
+    z-index: 40;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+    padding: 10px;
+    align-items: stretch;
+  }
+
+  .presentation-menu {
+    min-width: 0;
+  }
+
+  .presentation-menu summary {
+    width: 100%;
+    min-height: 42px;
+  }
+
+  .workspace-menu summary,
+  .action-menu summary,
+  .toolbar-actions button,
+  .button-link {
+    min-height: 42px;
+  }
+
+  .toolbar-actions {
+    grid-column: 1 / -1;
+    flex: 0 0 auto;
+    width: 100%;
+    margin-left: 0;
+    justify-content: space-between;
+    gap: 6px;
+  }
+
+  .action-group {
+    padding-right: 6px;
+    gap: 5px;
+  }
+
+  .presentation-popover,
+  .workspace-popover,
+  .accounts-popover,
+  .action-popover {
+    position: fixed;
+    left: 10px;
+    right: 10px;
+    top: auto;
+    bottom: 10px;
+    width: auto;
+    max-height: 72vh;
+    overflow: auto;
+  }
+
+  .publish-status {
+    position: sticky;
+    top: calc(46vh + 104px);
+    z-index: 35;
+    padding: 8px 12px;
+  }
+
+  .workbench {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+    padding: 12px;
+    overflow: visible;
+  }
+
+  .canvas-wrap {
+    position: sticky;
+    top: calc(46vh + 96px);
+    z-index: 10;
+    padding: 0;
+    align-items: start;
+    background: #eef1ed;
+  }
+
+  .canvas-wrap .slide-canvas {
+    width: 100%;
+    box-shadow: 0 8px 22px rgba(23, 32, 29, 0.12);
+  }
+
+  .properties {
+    max-height: none;
+    overflow: visible;
+    padding: 14px;
+  }
+
+  .properties label,
+  .properties-section {
+    font-size: 14px;
+  }
+
+  .numeric-control > div {
+    grid-template-columns: 1fr 74px;
+  }
+
+  .dialog-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .dialog-actions .danger-action {
+    margin-right: 0;
+    order: 3;
+  }
+
+  .presentation-dialog {
+    align-items: end;
+    padding: 10px;
+  }
+
+  .presentation-dialog-panel {
+    width: 100%;
+    max-height: 86vh;
+    overflow: auto;
+  }
+}
+
 @media (max-width: 520px) {
+  button,
+  .button-link {
+    padding: 8px 10px;
+  }
+
+  .slide-list {
+    max-height: 42vh;
+  }
+
+  .toolbar {
+    top: 42vh;
+    grid-template-columns: 1fr 44px;
+  }
+
+  .toolbar-actions {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    padding-bottom: 2px;
+  }
+
+  .toolbar-actions > button,
+  .toolbar-actions > a,
+  .toolbar-actions > details,
+  .action-group {
+    flex: 0 0 auto;
+  }
+
+  .button-link {
+    white-space: nowrap;
+  }
+
+  .publish-status {
+    top: calc(42vh + 104px);
+  }
+
+  .canvas-wrap {
+    top: calc(42vh + 96px);
+  }
+
   .participant-panel {
     width: calc(100vw - 36px);
     max-width: calc(100vw - 36px);
