@@ -25,13 +25,17 @@ import {
 import {
   firebaseEnabled,
   incrementRemoteVote,
+  readRemoteAuthStore,
   readRemotePresentation,
   readRemotePresentationEntry,
+  readRemotePresentationRecords,
   readRemotePollSession,
   resetRemoteVotes,
+  saveRemoteAuthStore,
   saveRemoteOpenPolls,
   saveRemotePollSession,
   saveRemotePresentation,
+  saveRemotePresentationRecords,
   readRemoteVotes,
   subscribeRemoteOpenPolls,
   subscribeRemoteVotes,
@@ -82,6 +86,8 @@ type PresentationRecord = {
   editorEmails: string[]
   presentation: Presentation
 }
+
+type PresentationRecordMeta = Omit<PresentationRecord, 'presentation'>
 
 type PresentationAudio = {
   name: string
@@ -215,7 +221,6 @@ const presentationCacheKeyForUser = (userId: string) => `${PRESENTATION_CACHE_KE
 const votesKeyForUser = (userId: string) => `${VOTES_KEY}.${userId}`
 const openPollsKeyForUser = (userId: string) => `${OPEN_POLLS_KEY}.${userId}`
 const presentationScope = (presentationId: string) => presentationId || DEFAULT_USER_ID
-const uniqueScopes = (...scopes: string[]) => Array.from(new Set(scopes.filter(Boolean)))
 
 const canEditPresentation = (record: PresentationRecord, email: string) =>
   record.ownerEmail === email || record.editorEmails.includes(email)
@@ -241,6 +246,21 @@ const writePresentationRecords = (records: PresentationRecord[]) => {
 }
 
 const readAllPresentationRecords = () => readJson<PresentationRecord[]>(PRESENTATION_RECORDS_KEY, [])
+
+const toPresentationRecordMeta = ({ id, title, ownerEmail, editorEmails }: PresentationRecord): PresentationRecordMeta => ({
+  id,
+  title,
+  ownerEmail,
+  editorEmails,
+})
+
+const mergePresentationRecordMetas = (metas: PresentationRecordMeta[], currentRecords: PresentationRecord[]) => {
+  const currentById = new Map(currentRecords.map((record) => [record.id, record.presentation]))
+  return metas.map((meta) => ({
+    ...meta,
+    presentation: currentById.get(meta.id) ?? { ...starterPresentation(), title: meta.title },
+  }))
+}
 
 const toBase64Url = (value: string) => {
   const bytes = new TextEncoder().encode(value)
@@ -408,11 +428,34 @@ function AdminGate() {
   const [authStore, setAuthStore] = useState<AuthStore>(() => readAuthStore())
   const [sessionEmail, setSessionEmail] = useState(() => localStorage.getItem(SESSION_KEY) ?? '')
   const [mode, setMode] = useState<'login' | 'register'>(() => (readAuthStore().users.length ? 'login' : 'register'))
+  const [authLoading, setAuthLoading] = useState(firebaseEnabled)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
   const [error, setError] = useState('')
+  const initialAuthStore = useRef(authStore)
   const hasUsers = authStore.users.length > 0
+
+  useEffect(() => {
+    if (!firebaseEnabled) return
+    let cancelled = false
+    void readRemoteAuthStore<AuthStore>({ users: [] })
+      .then((remoteStore) => {
+        if (cancelled) return
+        if (remoteStore.users.length) {
+          writeAuthStore(remoteStore)
+          setAuthStore(remoteStore)
+          setMode('login')
+        } else if (initialAuthStore.current.users.length) {
+          void saveRemoteAuthStore(initialAuthStore.current)
+        }
+        setAuthLoading(false)
+      })
+      .catch(() => setAuthLoading(false))
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const submit = () => {
     setError('')
@@ -428,6 +471,7 @@ function AdminGate() {
       const next = { email, password }
       const nextStore = { users: [...authStore.users, next] }
       writeAuthStore(nextStore)
+      void saveRemoteAuthStore(nextStore)
       localStorage.setItem(SESSION_KEY, email)
       setAuthStore(nextStore)
       setSessionEmail(email)
@@ -454,6 +498,17 @@ function AdminGate() {
           setSessionEmail('')
         }}
       />
+    )
+  }
+
+  if (authLoading) {
+    return (
+      <main className="auth-screen">
+        <section className="auth-panel">
+          <h1>Загрузка аккаунтов</h1>
+          <p>Получаем список пользователей из базы.</p>
+        </section>
+      </main>
     )
   }
 
@@ -534,7 +589,6 @@ function AdminView({
   const availableRecords = presentationRecords.filter((record) => canEditPresentation(record, user.email))
   const [activePresentationId, setActivePresentationId] = useState(availableRecords[0]?.id ?? '')
   const activeRecord = availableRecords.find((record) => record.id === activePresentationId) ?? availableRecords[0]
-  const userRemoteScope = userIdFromEmail(user.email)
   const scope = presentationScope(activeRecord?.id ?? DEFAULT_USER_ID)
   const presentationKey = `${PRESENTATION_KEY}.record.${scope}`
   const votesKey = votesKeyForUser(scope)
@@ -584,6 +638,28 @@ function AdminView({
   }, [])
 
   useEffect(() => {
+    if (!firebaseEnabled) return
+    let cancelled = false
+    void readRemotePresentationRecords<PresentationRecordMeta[]>([])
+      .then((remoteMetas) => {
+        if (cancelled || !remoteMetas.length) return
+        setPresentationRecords((currentRecords) => {
+          const mergedRecords = mergePresentationRecordMetas(remoteMetas, currentRecords)
+          writePresentationRecords(mergedRecords)
+          const nextAvailable = mergedRecords.filter((record) => canEditPresentation(record, user.email))
+          if (nextAvailable.length && !nextAvailable.some((record) => record.id === activePresentationId)) {
+            setActivePresentationId(nextAvailable[0].id)
+          }
+          return mergedRecords
+        })
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [activePresentationId, user.email])
+
+  useEffect(() => {
     if (!activeRecord || loadedRecordId.current === activeRecord.id) return
     loadedRecordId.current = activeRecord.id
     setPresentationBase(activeRecord.presentation)
@@ -596,13 +672,10 @@ function AdminView({
   useEffect(() => {
     if (!firebaseEnabled || !activeRecordId) return undefined
     let cancelled = false
-    const scopesToRead = uniqueScopes(scope, userRemoteScope)
-    void Promise.all(scopesToRead.map((remoteScope) => readRemotePresentationEntry(remoteScope)))
-      .then((entries) => {
+    void readRemotePresentationEntry(scope)
+      .then((entry) => {
         if (cancelled) return
-        const remotePresentation = entries
-          .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry?.value))
-          .sort((left, right) => right.updatedAt - left.updatedAt)[0]?.value
+        const remotePresentation = entry?.value
         if (remotePresentation) {
           const nextPresentation = remotePresentation as Presentation
           setPresentationRecords((currentRecords) => {
@@ -629,10 +702,11 @@ function AdminView({
     return () => {
       cancelled = true
     }
-  }, [activeRecordId, presentationKey, scope, userRemoteScope])
+  }, [activeRecordId, presentationKey, scope])
 
   const persistRecords = (records: PresentationRecord[]) => {
     setPresentationRecords(records)
+    void saveRemotePresentationRecords(records.map(toPresentationRecordMeta))
     return writePresentationRecords(records)
   }
 
@@ -663,10 +737,7 @@ function AdminView({
     setPresentationBase(next)
     const savedLocally = persistActivePresentation(next)
     setSaveStatus(savedLocally ? 'Сохраняем в базу...' : 'Локальный кэш переполнен. Сохраняем в базу...')
-    const remoteResults = firebaseEnabled
-      ? await Promise.all(uniqueScopes(scope, userRemoteScope).map((remoteScope) => saveRemotePresentation(next, remoteScope)))
-      : [true]
-    const savedRemotely = remoteResults.every(Boolean)
+    const savedRemotely = firebaseEnabled ? await saveRemotePresentation(next, scope) : true
     setSaveStatus(
       savedRemotely
         ? savedLocally
@@ -698,6 +769,7 @@ function AdminView({
     if (!isOwner || !newUserEmail || !newUserPassword || authStore.users.some((item) => item.email === newUserEmail)) return
     const nextStore = { users: [...authStore.users, { email: newUserEmail, password: newUserPassword }] }
     writeAuthStore(nextStore)
+    void saveRemoteAuthStore(nextStore)
     setAuthStore(nextStore)
     setNewUserEmail('')
     setNewUserPassword('')
@@ -711,6 +783,7 @@ function AdminView({
       editorEmails: record.editorEmails.filter((editor) => editor !== email),
     }))
     writeAuthStore(nextStore)
+    void saveRemoteAuthStore(nextStore)
     setAuthStore(nextStore)
     persistRecords(records)
   }
@@ -743,6 +816,7 @@ function AdminView({
     const latestRecords = readAllPresentationRecords()
     persistRecords([...(latestRecords.length ? latestRecords : presentationRecords), record])
     writeJson(`${PRESENTATION_KEY}.record.${record.id}`, nextPresentation)
+    void saveRemotePresentation(nextPresentation, record.id)
     loadedRecordId.current = record.id
     setActivePresentationId(record.id)
     setPresentationState(nextPresentation)
@@ -771,8 +845,8 @@ function AdminView({
       setPresentationState(nextActivePresentation)
       setPresentationBase(nextActivePresentation)
       writeJson(presentationKey, nextActivePresentation)
-      void Promise.all(uniqueScopes(scope, userRemoteScope).map((remoteScope) => saveRemotePresentation(nextActivePresentation, remoteScope))).then((results) => {
-        setSaveStatus(results.every(Boolean) ? 'Сохранено' : 'Не удалось сохранить название в базу.')
+      void saveRemotePresentation(nextActivePresentation, scope).then((saved) => {
+        setSaveStatus(saved ? 'Сохранено' : 'Не удалось сохранить название в базу.')
       })
     }
     setPresentationDialog(null)

@@ -274,6 +274,14 @@ export const readRemotePresentation = async (scope = 'default') =>
 export const readRemotePresentationEntry = async (scope = 'default') =>
   readRemoteStoredJson<RemotePresentation | null>(scopedName('presentation', scope), null)
 
+export const saveRemoteAuthStore = async (store: unknown) => saveRemoteJson('authStore', store)
+
+export const readRemoteAuthStore = async <T,>(fallback: T) => readRemoteJson<T>('authStore', fallback)
+
+export const saveRemotePresentationRecords = async (records: unknown) => saveRemoteJson('presentationRecords', records)
+
+export const readRemotePresentationRecords = async <T,>(fallback: T) => readRemoteJson<T>('presentationRecords', fallback)
+
 export const subscribeRemotePresentation = (
   onChange: (presentation: RemotePresentation | null) => void,
   onError?: () => void,
