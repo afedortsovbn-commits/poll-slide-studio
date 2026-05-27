@@ -18,6 +18,11 @@ type RemotePresentation = {
   slides: unknown[]
 }
 
+export type RemoteStoredValue<T> = {
+  value: T
+  updatedAt: number
+}
+
 export type RemoteVoteStore = Record<string, Record<string, number>>
 export type RemoteOpenPoll = boolean | {
   isOpen: boolean
@@ -114,7 +119,7 @@ const parseRemoteJson = <T,>(data: unknown, fallback: T) => {
   return fallback
 }
 
-const parseRemoteRecord = <T,>(data: unknown, fallback: T) => {
+const parseRemoteRecord = <T,>(data: unknown, fallback: T): RemoteStoredValue<T> | null => {
   if (!data || typeof data !== 'object') return null
   const record = data as { updatedAt?: unknown }
   return {
@@ -153,7 +158,7 @@ const saveRemoteJson = async (name: string, value: unknown) => {
   }
 }
 
-const readRemoteJson = async <T,>(name: string, fallback: T) => {
+const readRemoteStoredJson = async <T,>(name: string, fallback: T) => {
   const realtimeUrls = realtimeStatePaths(name).map(realtimeRestUrl).filter(Boolean)
   let newest: { value: T; updatedAt: number } | null = null
   for (const realtimeUrl of realtimeUrls) {
@@ -168,7 +173,11 @@ const readRemoteJson = async <T,>(name: string, fallback: T) => {
       // Try the next compatible path.
     }
   }
-  return newest?.value ?? fallback
+  return newest
+}
+
+const readRemoteJson = async <T,>(name: string, fallback: T) => {
+  return (await readRemoteStoredJson(name, fallback))?.value ?? fallback
 }
 
 const subscribeRemoteJson = <T,>(
@@ -261,6 +270,9 @@ export const saveRemotePresentation = async (presentation: RemotePresentation, s
 
 export const readRemotePresentation = async (scope = 'default') =>
   readRemoteJson<RemotePresentation | null>(scopedName('presentation', scope), null)
+
+export const readRemotePresentationEntry = async (scope = 'default') =>
+  readRemoteStoredJson<RemotePresentation | null>(scopedName('presentation', scope), null)
 
 export const subscribeRemotePresentation = (
   onChange: (presentation: RemotePresentation | null) => void,

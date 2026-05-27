@@ -26,6 +26,7 @@ import {
   firebaseEnabled,
   incrementRemoteVote,
   readRemotePresentation,
+  readRemotePresentationEntry,
   readRemotePollSession,
   resetRemoteVotes,
   saveRemoteOpenPolls,
@@ -214,6 +215,7 @@ const presentationCacheKeyForUser = (userId: string) => `${PRESENTATION_CACHE_KE
 const votesKeyForUser = (userId: string) => `${VOTES_KEY}.${userId}`
 const openPollsKeyForUser = (userId: string) => `${OPEN_POLLS_KEY}.${userId}`
 const presentationScope = (presentationId: string) => presentationId || DEFAULT_USER_ID
+const uniqueScopes = (...scopes: string[]) => Array.from(new Set(scopes.filter(Boolean)))
 
 const canEditPresentation = (record: PresentationRecord, email: string) =>
   record.ownerEmail === email || record.editorEmails.includes(email)
@@ -224,7 +226,7 @@ const readPresentationRecords = (email: string): PresentationRecord[] => {
   const userId = userIdFromEmail(email)
   const migrated = readJson(presentationKeyForUser(userId), readJson(PRESENTATION_KEY, starterPresentation()))
   const record: PresentationRecord = {
-    id: createId(),
+    id: userId,
     title: migrated.title || 'Основная презентация',
     ownerEmail: email,
     editorEmails: [email],
@@ -532,6 +534,7 @@ function AdminView({
   const availableRecords = presentationRecords.filter((record) => canEditPresentation(record, user.email))
   const [activePresentationId, setActivePresentationId] = useState(availableRecords[0]?.id ?? '')
   const activeRecord = availableRecords.find((record) => record.id === activePresentationId) ?? availableRecords[0]
+  const userRemoteScope = userIdFromEmail(user.email)
   const scope = presentationScope(activeRecord?.id ?? DEFAULT_USER_ID)
   const presentationKey = `${PRESENTATION_KEY}.record.${scope}`
   const votesKey = votesKeyForUser(scope)
@@ -593,9 +596,13 @@ function AdminView({
   useEffect(() => {
     if (!firebaseEnabled || !activeRecordId) return undefined
     let cancelled = false
-    void readRemotePresentation(scope)
-      .then((remotePresentation) => {
+    const scopesToRead = uniqueScopes(scope, userRemoteScope)
+    void Promise.all(scopesToRead.map((remoteScope) => readRemotePresentationEntry(remoteScope)))
+      .then((entries) => {
         if (cancelled) return
+        const remotePresentation = entries
+          .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry?.value))
+          .sort((left, right) => right.updatedAt - left.updatedAt)[0]?.value
         if (remotePresentation) {
           const nextPresentation = remotePresentation as Presentation
           setPresentationRecords((currentRecords) => {
@@ -622,7 +629,7 @@ function AdminView({
     return () => {
       cancelled = true
     }
-  }, [activeRecordId, presentationKey, scope])
+  }, [activeRecordId, presentationKey, scope, userRemoteScope])
 
   const persistRecords = (records: PresentationRecord[]) => {
     setPresentationRecords(records)
@@ -656,7 +663,10 @@ function AdminView({
     setPresentationBase(next)
     const savedLocally = persistActivePresentation(next)
     setSaveStatus(savedLocally ? 'Сохраняем в базу...' : 'Локальный кэш переполнен. Сохраняем в базу...')
-    const savedRemotely = firebaseEnabled ? await saveRemotePresentation(next, scope) : true
+    const remoteResults = firebaseEnabled
+      ? await Promise.all(uniqueScopes(scope, userRemoteScope).map((remoteScope) => saveRemotePresentation(next, remoteScope)))
+      : [true]
+    const savedRemotely = remoteResults.every(Boolean)
     setSaveStatus(
       savedRemotely
         ? savedLocally
@@ -761,8 +771,8 @@ function AdminView({
       setPresentationState(nextActivePresentation)
       setPresentationBase(nextActivePresentation)
       writeJson(presentationKey, nextActivePresentation)
-      void saveRemotePresentation(nextActivePresentation, scope).then((saved) => {
-        setSaveStatus(saved ? 'Сохранено' : 'Не удалось сохранить название в базу.')
+      void Promise.all(uniqueScopes(scope, userRemoteScope).map((remoteScope) => saveRemotePresentation(nextActivePresentation, remoteScope))).then((results) => {
+        setSaveStatus(results.every(Boolean) ? 'Сохранено' : 'Не удалось сохранить название в базу.')
       })
     }
     setPresentationDialog(null)
