@@ -3,6 +3,7 @@ import { QRCodeSVG } from 'qrcode.react'
 import {
   Send,
   ArrowLeft,
+  ChevronDown,
   Check,
   Circle,
   Copy,
@@ -20,6 +21,7 @@ import {
   Save,
   Trash2,
   Upload,
+  UserCircle,
   UserPlus,
   X,
 } from 'lucide-react'
@@ -627,6 +629,15 @@ function AdminView({
   const closeMenus = () => setOpenMenu(null)
   const isDirty = JSON.stringify(presentation) !== JSON.stringify(presentationBase)
 
+  const scrollSlideIntoView = (slideId?: string) => {
+    if (!slideId) return
+    window.setTimeout(() => {
+      slideListRef.current
+        ?.querySelector(`[data-slide-id="${slideId}"]`)
+        ?.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' })
+    }, 0)
+  }
+
   useEffect(() => {
     const closeOnPointer = (event: PointerEvent) => {
       if (!(event.target instanceof Element)) return
@@ -642,6 +653,10 @@ function AdminView({
       document.removeEventListener('keydown', closeOnEscape)
     }
   }, [])
+
+  useEffect(() => {
+    scrollSlideIntoView(selectedId)
+  }, [selectedId])
 
   useEffect(() => {
     if (!firebaseEnabled) return
@@ -861,6 +876,7 @@ function AdminView({
 
   const deletePresentationRecord = () => {
     if (!editingPresentationId || availableRecords.length < 2) return
+    if (!window.confirm('Удалить презентацию? Это действие нельзя отменить.')) return
     const latestRecords = readAllPresentationRecords()
     const sourceRecords = latestRecords.length ? latestRecords : presentationRecords
     const records = sourceRecords.filter((record) => record.id !== editingPresentationId)
@@ -898,9 +914,6 @@ function AdminView({
     slides.splice(insertIndex, 0, slide)
     setPresentation({ ...presentation, slides })
     setSelectedId(slide.id)
-    window.setTimeout(() => {
-      slideListRef.current?.querySelector(`[data-slide-id="${slide.id}"]`)?.scrollIntoView({ block: 'center' })
-    }, 0)
   }
 
   const copySlide = (slideId: string) => {
@@ -1097,6 +1110,124 @@ function AdminView({
     )
   }
 
+  const presentationMenu = (className = 'presentation-menu') => (
+    <details className={className} open={openMenu === 'presentations'} onToggle={(event) => setOpenMenu(event.currentTarget.open ? 'presentations' : null)}>
+      <summary>
+        <span>{activeRecord?.title ?? presentation.title}</span>
+        <ChevronDown className="summary-chevron" size={16} />
+      </summary>
+      <div className="presentation-popover">
+        <button className="popover-close" type="button" onClick={closeMenus} title="Р—Р°РєСЂС‹С‚СЊ"><X size={16} /></button>
+        <strong>РџСЂРµР·РµРЅС‚Р°С†РёРё</strong>
+        <div className="presentation-list">
+          {availableRecords.map((record) => (
+            <div className={record.id === activeRecord?.id ? 'presentation-row active' : 'presentation-row'} key={record.id}>
+              <button type="button" onClick={() => setActivePresentationId(record.id)}>
+                {record.title}
+              </button>
+              <button type="button" onClick={() => openEditPresentationDialog(record)} title="РќР°СЃС‚СЂРѕРёС‚СЊ РїСЂРµР·РµРЅС‚Р°С†РёСЋ">
+                <Pencil size={16} />
+              </button>
+            </div>
+          ))}
+        </div>
+        <button type="button" onClick={openCreatePresentationDialog}>
+          <Plus size={18} />
+          РЎРѕР·РґР°С‚СЊ РїСЂРµР·РµРЅС‚Р°С†РёСЋ
+        </button>
+      </div>
+    </details>
+  )
+
+  const accountMenu = (className = 'workspace-menu toolbar-menu') => (
+    <details className={className} open={openMenu === 'accounts'} onToggle={(event) => setOpenMenu(event.currentTarget.open ? 'accounts' : null)}>
+      <summary>
+        <UserCircle size={18} />
+      </summary>
+      <div className="workspace-popover accounts-popover toolbar-popover">
+        <button className="popover-close" type="button" onClick={closeMenus} title="Р—Р°РєСЂС‹С‚СЊ"><X size={16} /></button>
+        <strong>{isOwner ? 'РЈРїСЂР°РІР»РµРЅРёРµ Р°РєРєР°СѓРЅС‚Р°РјРё' : user.email}</strong>
+        {isOwner && (
+          <>
+          <input value={newUserEmail} onChange={(event) => setNewUserEmail(event.target.value)} placeholder="Р›РѕРіРёРЅ" />
+          <input type="password" value={newUserPassword} onChange={(event) => setNewUserPassword(event.target.value)} placeholder="РџР°СЂРѕР»СЊ" />
+          <button type="button" onClick={createUser}>
+            <UserPlus size={18} />
+            РЎРѕР·РґР°С‚СЊ Р°РєРєР°СѓРЅС‚
+          </button>
+          <div className="account-strip">
+            {authStore.users.map((account, index) => (
+              <span className="account-chip" key={account.email}>
+                {account.email}
+                {index > 0 && account.email !== user.email && (
+                  <button type="button" onClick={() => deleteUser(account.email)} title="РЈРґР°Р»РёС‚СЊ Р°РєРєР°СѓРЅС‚">
+                    <Trash2 size={14} />
+                  </button>
+                )}
+              </span>
+            ))}
+          </div>
+          </>
+        )}
+        <button type="button" onClick={onSwitchAccount}>
+          <Lock size={18} />
+          РЎРјРµРЅРёС‚СЊ Р°РєРєР°СѓРЅС‚
+        </button>
+      </div>
+    </details>
+  )
+
+  const toolbarActions = (className = 'toolbar-actions') => (
+    <div className={className}>
+      <div className="action-group" aria-label="РСЃС‚РѕСЂРёСЏ Рё СЃРѕС…СЂР°РЅРµРЅРёРµ">
+        <button type="button" onClick={undo} disabled={!canUndo} title="РћС‚РјРµРЅРёС‚СЊ">
+          <ArrowLeft size={18} />
+        </button>
+        <button
+          className={isDirty ? 'primary small-primary' : ''}
+          type="button"
+          onClick={() => void savePresentation(presentation)}
+          title={isDirty ? 'РЎРѕС…СЂР°РЅРёС‚СЊ РёР·РјРµРЅРµРЅРёСЏ' : 'РЎРѕС…СЂР°РЅРµРЅРѕ Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё'}
+        >
+          <Save size={18} />
+        </button>
+        <button className="reset-action" type="button" onClick={() => resetVotes()} title="РћР±РЅСѓР»РёС‚СЊ РІСЃРµ РѕС‚РІРµС‚С‹">
+          <RotateCcw size={18} />
+        </button>
+      </div>
+      <button className="primary small-primary" type="button" onClick={() => void publishPresentation()} title="РћРїСѓР±Р»РёРєРѕРІР°С‚СЊ РґР»СЏ РґСЂСѓРіРёС… СѓСЃС‚СЂРѕР№СЃС‚РІ">
+        <Upload size={18} />
+      </button>
+      <button className={audioName ? 'icon-on' : ''} type="button" onClick={() => audioInput.current?.click()} title={audioName ? 'Р—Р°РјРµРЅРёС‚СЊ С‚СЂРµРє' : 'Р”РѕР±Р°РІРёС‚СЊ С‚СЂРµРє'}>
+        <Music size={18} />
+      </button>
+      <details className="action-menu align-right" open={openMenu === 'files'} onToggle={(event) => setOpenMenu(event.currentTarget.open ? 'files' : null)}>
+        <summary>
+          <FolderInput size={18} />
+        </summary>
+        <div className="action-popover">
+          <button className="popover-close" type="button" onClick={closeMenus} title="Р—Р°РєСЂС‹С‚СЊ"><X size={16} /></button>
+          <button type="button" onClick={exportPresentation} title="Р­РєСЃРїРѕСЂС‚РёСЂРѕРІР°С‚СЊ РїСЂРµР·РµРЅС‚Р°С†РёСЋ РІ JSON-С„Р°Р№Р»">
+            <Upload size={18} />
+            Р­РєСЃРїРѕСЂС‚ JSON
+          </button>
+          <button type="button" onClick={() => importInput.current?.click()} title="РРјРїРѕСЂС‚РёСЂРѕРІР°С‚СЊ РїСЂРµР·РµРЅС‚Р°С†РёСЋ РёР· JSON-С„Р°Р№Р»Р°">
+            <Download size={18} />
+            РРјРїРѕСЂС‚ JSON
+          </button>
+          <button type="button" onClick={() => void exportPowerPoint()} title="Р­РєСЃРїРѕСЂС‚РёСЂРѕРІР°С‚СЊ РїСЂРµР·РµРЅС‚Р°С†РёСЋ РІ PowerPoint">
+            PPT
+            Р­РєСЃРїРѕСЂС‚ PowerPoint
+          </button>
+        </div>
+      </details>
+      <a className="button-link" href={showHref} target="_blank" rel="noreferrer">
+        <Eye size={18} />
+        РџРѕРєР°Р·
+      </a>
+    </div>
+  )
+
   return (
     <main className="admin-shell">
       <aside className="slide-list">
@@ -1107,11 +1238,17 @@ function AdminView({
             <span>1920 x 1080</span>
           </div>
         </div>
-        <button className="primary" type="button" onClick={addSlide}>
+        <div className="mobile-context-row">
+          {presentationMenu('presentation-menu mobile-presentation-menu')}
+          {accountMenu('workspace-menu toolbar-menu mobile-profile-menu')}
+        </div>
+        {toolbarActions('toolbar-actions mobile-toolbar-actions')}
+        <div className="slide-rail">
+        <button className="primary slide-add-button" type="button" onClick={addSlide} title="Добавить слайд">
           <Plus size={17} />
           Добавить слайд
         </button>
-        <button type="button" onClick={deleteSelectedSlides} disabled={!selectedSlideIds.length || selectedSlideIds.length >= presentation.slides.length}>
+        <button className="slide-delete-button" type="button" onClick={deleteSelectedSlides} disabled={!selectedSlideIds.length || selectedSlideIds.length >= presentation.slides.length} title="Удалить выбранные">
           <Trash2 size={16} />
           Удалить выбранные
         </button>
@@ -1152,6 +1289,7 @@ function AdminView({
             </div>
           ))}
         </div>
+        </div>
       </aside>
 
       <section className="editor">
@@ -1159,6 +1297,7 @@ function AdminView({
           <details className="presentation-menu" open={openMenu === 'presentations'} onToggle={(event) => setOpenMenu(event.currentTarget.open ? 'presentations' : null)}>
             <summary>
               <span>{activeRecord?.title ?? presentation.title}</span>
+              <ChevronDown className="summary-chevron" size={16} />
             </summary>
             <div className="presentation-popover">
               <button className="popover-close" type="button" onClick={closeMenus} title="Закрыть"><X size={16} /></button>
