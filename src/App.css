@@ -223,6 +223,11 @@ label {
   gap: 12px;
 }
 
+.mobile-slide-picker,
+.mobile-slide-check {
+  display: none;
+}
+
 .slides {
   display: grid;
   gap: 8px;
@@ -1159,10 +1164,28 @@ label {
   .auth-screen {
     align-items: start;
     padding: 18px;
+    overflow-x: hidden;
   }
 
   .auth-panel {
+    width: 100%;
+    min-width: 0;
     padding: 22px;
+  }
+
+  .auth-panel h1 {
+    font-size: 28px;
+    line-height: 1.08;
+    overflow-wrap: anywhere;
+  }
+
+  .auth-tabs button {
+    min-width: 0;
+    padding: 8px 6px;
+    font-size: 12px;
+    gap: 5px;
+    white-space: normal;
+    line-height: 1.15;
   }
 
   .admin-shell {
@@ -1175,12 +1198,12 @@ label {
   .slide-list {
     position: sticky;
     top: 0;
-    z-index: 45;
+    z-index: 90;
     min-height: 0;
     max-height: 38vh;
     padding: 10px;
     gap: 8px;
-    overflow: hidden;
+    overflow: visible;
     border-bottom: 1px solid rgba(255, 255, 255, 0.12);
   }
 
@@ -1203,9 +1226,9 @@ label {
   .mobile-toolbar-actions {
     display: flex !important;
     width: 100%;
-    overflow-x: auto;
+    overflow: visible;
     flex-wrap: nowrap;
-    justify-content: flex-start;
+    justify-content: space-between;
     gap: 6px;
     padding-bottom: 2px;
   }
@@ -1220,9 +1243,25 @@ label {
   }
 
   .mobile-toolbar-actions .action-group {
+    display: flex;
     flex: 0 0 auto;
     gap: 5px;
     padding-right: 0;
+  }
+
+  .mobile-extra-menu {
+    position: relative;
+  }
+
+  .mobile-extra-menu .action-popover {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    bottom: auto;
+    left: auto;
+    width: min(270px, calc(100vw - 20px));
+    max-height: 58vh;
+    z-index: 120;
   }
 
   .editor > .toolbar {
@@ -1256,29 +1295,81 @@ label {
   }
 
   .slide-add-button {
-    order: 1;
-  }
-
-  .slide-delete-button {
     order: 3;
   }
 
-  .slides {
+  .slide-delete-button {
+    order: 1;
+  }
+
+  .desktop-slides {
+    display: none;
+  }
+
+  .mobile-slide-picker {
     order: 2;
-    display: flex;
+    position: relative;
+    display: block;
+    min-width: 0;
+  }
+
+  .mobile-slide-picker summary {
+    min-height: 46px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 18px;
+    align-items: center;
     gap: 8px;
+    padding: 0 10px;
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.075);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 8px;
+    cursor: pointer;
+    list-style: none;
+  }
+
+  .mobile-slide-picker summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .mobile-slide-picker summary span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 850;
+  }
+
+  .mobile-slide-popover {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: -52px;
+    right: -52px;
+    z-index: 115;
+    display: grid;
+    gap: 8px;
+    max-height: min(62vh, 460px);
+    overflow: auto;
+    padding: 10px;
+    background: #101816;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 8px;
+    box-shadow: 0 18px 42px rgba(0, 0, 0, 0.32);
+  }
+
+  .mobile-slides {
+    display: grid;
+    gap: 7px;
     margin-top: 0;
-    overflow-x: auto;
-    overflow-y: hidden;
-    padding-bottom: 0;
-    scroll-snap-type: x proximity;
+    overflow: visible;
   }
 
   .thumb {
-    flex: 0 0 min(58vw, 190px);
     min-height: 46px;
     padding: 7px 8px;
-    scroll-snap-align: start;
+  }
+
+  .slide-rail:not(.selection-mode) .thumb input[type='checkbox'] {
+    display: none;
   }
 
   .thumb strong {
@@ -1363,6 +1454,7 @@ label {
     width: min(360px, calc(100vw - 20px));
     max-height: 62vh;
     overflow: auto;
+    z-index: 120;
   }
 
   .mobile-profile-menu .workspace-popover,
@@ -1388,11 +1480,33 @@ label {
   }
 
   .canvas-wrap {
-    position: static;
+    position: relative;
     z-index: 10;
     padding: 0;
     align-items: start;
     background: #eef1ed;
+  }
+
+  .mobile-slide-check {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 30;
+    width: 34px;
+    height: 34px;
+    display: grid;
+    place-items: center;
+    gap: 0;
+    padding: 0;
+    background: rgba(255, 255, 255, 0.94);
+    border: 1px solid rgba(18, 76, 63, 0.22);
+    border-radius: 8px;
+    box-shadow: 0 8px 18px rgba(23, 32, 29, 0.14);
+  }
+
+  .mobile-slide-check input {
+    width: 18px;
+    height: 18px;
   }
 
   .canvas-wrap .slide-canvas {

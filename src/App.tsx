@@ -9,10 +9,12 @@ import {
   Copy,
   Download,
   Eye,
+  FileUp,
   FolderInput,
   GripVertical,
   ImagePlus,
   Lock,
+  MoreHorizontal,
   Music,
   Pencil,
   Plus,
@@ -617,11 +619,15 @@ function AdminView({
   const [presentationDialog, setPresentationDialog] = useState<'create' | 'edit' | null>(null)
   const [editingPresentationId, setEditingPresentationId] = useState('')
   const [openMenu, setOpenMenu] = useState<string | null>(null)
+  const [mobileSlideSelection, setMobileSlideSelection] = useState(false)
   const selected = presentation.slides.find((slide) => slide.id === selectedId) ?? presentation.slides[0]
   const fileInput = useRef<HTMLInputElement>(null)
   const audioInput = useRef<HTMLInputElement>(null)
   const importInput = useRef<HTMLInputElement>(null)
   const slideListRef = useRef<HTMLDivElement>(null)
+  const mobileSlideListRef = useRef<HTMLDivElement>(null)
+  const slideTouchStartRef = useRef<{ x: number; y: number } | null>(null)
+  const longTapRef = useRef<number | null>(null)
   const loadedRecordId = useRef(activeRecord?.id ?? '')
   const isOwner = authStore.users[0]?.email === user.email
   const activeRecordId = activeRecord?.id ?? ''
@@ -632,16 +638,25 @@ function AdminView({
   const scrollSlideIntoView = (slideId?: string) => {
     if (!slideId) return
     window.setTimeout(() => {
-      slideListRef.current
-        ?.querySelector(`[data-slide-id="${slideId}"]`)
-        ?.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' })
+      ;[slideListRef.current, mobileSlideListRef.current].forEach((container) => {
+        container
+          ?.querySelector(`[data-slide-id="${slideId}"]`)
+          ?.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' })
+      })
     }, 0)
+  }
+
+  const clearLongTap = () => {
+    if (longTapRef.current) {
+      window.clearTimeout(longTapRef.current)
+      longTapRef.current = null
+    }
   }
 
   useEffect(() => {
     const closeOnPointer = (event: PointerEvent) => {
       if (!(event.target instanceof Element)) return
-      if (!event.target.closest('.presentation-menu, .workspace-menu, .action-menu, .presentation-dialog')) closeMenus()
+      if (!event.target.closest('.presentation-menu, .workspace-menu, .action-menu, .mobile-slide-picker, .presentation-dialog')) closeMenus()
     }
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') closeMenus()
@@ -916,6 +931,37 @@ function AdminView({
     setSelectedId(slide.id)
   }
 
+  const selectAdjacentSlide = (direction: 1 | -1) => {
+    const index = presentation.slides.findIndex((slide) => slide.id === selected?.id)
+    if (index < 0) return
+    const next = presentation.slides[Math.min(Math.max(index + direction, 0), presentation.slides.length - 1)]
+    if (next) setSelectedId(next.id)
+  }
+
+  const startSlideTouch = (event: TouchEvent<HTMLElement>) => {
+    const touch = event.changedTouches[0]
+    if (!touch || !selected) return
+    slideTouchStartRef.current = { x: touch.clientX, y: touch.clientY }
+    clearLongTap()
+    longTapRef.current = window.setTimeout(() => {
+      setMobileSlideSelection(true)
+      setSelectedSlideIds((items) => (items.includes(selected.id) ? items : [...items, selected.id]))
+    }, 560)
+  }
+
+  const endSlideTouch = (event: TouchEvent<HTMLElement>) => {
+    const start = slideTouchStartRef.current
+    const touch = event.changedTouches[0]
+    slideTouchStartRef.current = null
+    clearLongTap()
+    if (!start || !touch || mobileSlideSelection) return
+    const deltaX = touch.clientX - start.x
+    const deltaY = touch.clientY - start.y
+    if (Math.abs(deltaX) < 48 || Math.abs(deltaX) < Math.abs(deltaY) * 1.2) return
+    if (deltaX < 0) selectAdjacentSlide(1)
+    else selectAdjacentSlide(-1)
+  }
+
   const copySlide = (slideId: string) => {
     const index = presentation.slides.findIndex((slide) => slide.id === slideId)
     const source = presentation.slides[index]
@@ -956,6 +1002,7 @@ function AdminView({
     const slides = presentation.slides.filter((slide) => !selectedSlideIds.includes(slide.id))
     setPresentation({ ...presentation, slides })
     setSelectedSlideIds([])
+    setMobileSlideSelection(false)
     setSelectedId(slides.find((slide) => slide.id === selectedId)?.id ?? slides[0].id)
   }
 
@@ -1191,24 +1238,29 @@ function AdminView({
         >
           <Save size={18} />
         </button>
-        <button className="reset-action" type="button" onClick={() => resetVotes()} title="Обнулить все ответы">
-          <RotateCcw size={18} />
-        </button>
       </div>
       <button className="primary small-primary" type="button" onClick={() => void publishPresentation()} title="Опубликовать для других устройств">
         <Upload size={18} />
       </button>
-      <button className={audioName ? 'icon-on' : ''} type="button" onClick={() => audioInput.current?.click()} title={audioName ? 'Заменить трек' : 'Добавить трек'}>
-        <Music size={18} />
-      </button>
-      <details className="action-menu align-right" open={openMenu === 'files'} onToggle={(event) => setOpenMenu(event.currentTarget.open ? 'files' : null)}>
+      <a className="button-link" href={showHref} target="_blank" rel="noreferrer" title="Показ">
+        <Eye size={18} />
+      </a>
+      <details className="action-menu align-right mobile-extra-menu" open={openMenu === 'mobile-extra'} onToggle={(event) => setOpenMenu(event.currentTarget.open ? 'mobile-extra' : null)}>
         <summary>
-          <FolderInput size={18} />
+          <MoreHorizontal size={18} />
         </summary>
         <div className="action-popover">
           <button className="popover-close" type="button" onClick={closeMenus} title="Закрыть"><X size={16} /></button>
+          <button className="reset-action" type="button" onClick={() => resetVotes()} title="Обнулить все ответы">
+            <RotateCcw size={18} />
+            Обнулить ответы
+          </button>
+          <button className={audioName ? 'icon-on' : ''} type="button" onClick={() => audioInput.current?.click()} title={audioName ? 'Заменить трек' : 'Добавить трек'}>
+            <Music size={18} />
+            Музыка
+          </button>
           <button type="button" onClick={exportPresentation} title="Экспортировать презентацию в JSON-файл">
-            <Upload size={18} />
+            <FileUp size={18} />
             Экспорт JSON
           </button>
           <button type="button" onClick={() => importInput.current?.click()} title="Импортировать презентацию из JSON-файла">
@@ -1216,14 +1268,54 @@ function AdminView({
             Импорт JSON
           </button>
           <button type="button" onClick={() => void exportPowerPoint()} title="Экспортировать презентацию в PowerPoint">
-            PPT
+            <FileUp size={18} />
             Экспорт PowerPoint
           </button>
         </div>
       </details>
-      <a className="button-link" href={showHref} target="_blank" rel="noreferrer" title="Показ">
-        <Eye size={18} />
-      </a>
+    </div>
+  )
+
+  const renderSlideThumb = (slide: Slide, index: number, mode: 'desktop' | 'mobile') => (
+    <div
+      className={[
+        slide.id === selected?.id ? 'thumb active' : 'thumb',
+        mobileSlideSelection ? 'selection-mode' : '',
+      ].filter(Boolean).join(' ')}
+      key={`${mode}-${slide.id}`}
+      data-slide-id={slide.id}
+      role="button"
+      tabIndex={0}
+      draggable
+      onDragStart={() => setDraggedSlideId(slide.id)}
+      onDragOver={(event) => event.preventDefault()}
+      onDrop={() => reorderSlide(slide.id)}
+      onDragEnd={() => setDraggedSlideId(null)}
+      onClick={() => {
+        setSelectedId(slide.id)
+        if (mode === 'mobile') setOpenMenu(null)
+      }}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          setSelectedId(slide.id)
+          if (mode === 'mobile') setOpenMenu(null)
+        }
+      }}
+    >
+      <input
+        type="checkbox"
+        checked={selectedSlideIds.includes(slide.id)}
+        onChange={(event) => {
+          event.stopPropagation()
+          toggleSelectedSlide(slide.id)
+        }}
+        onClick={(event) => event.stopPropagation()}
+      />
+      <GripVertical className="drag-marker" size={16} />
+      <span>{index + 1}</span>
+      <strong>{slide.title || 'Без названия'}</strong>
+      {slide.poll && <QrCode className="thumb-poll-mark" size={16} />}
     </div>
   )
 
@@ -1242,52 +1334,30 @@ function AdminView({
           {accountMenu('workspace-menu toolbar-menu mobile-profile-menu')}
         </div>
         {toolbarActions('toolbar-actions mobile-toolbar-actions')}
-        <div className="slide-rail">
-        <button className="primary slide-add-button" type="button" onClick={addSlide} title="Добавить слайд">
-          <Plus size={17} />
-          Добавить слайд
-        </button>
-        <button className="slide-delete-button" type="button" onClick={deleteSelectedSlides} disabled={!selectedSlideIds.length || selectedSlideIds.length >= presentation.slides.length} title="Удалить выбранные">
-          <Trash2 size={16} />
-          Удалить выбранные
-        </button>
-        <div className="slides" ref={slideListRef}>
-          {presentation.slides.map((slide, index) => (
-            <div
-              className={slide.id === selected?.id ? 'thumb active' : 'thumb'}
-              key={slide.id}
-              data-slide-id={slide.id}
-              role="button"
-              tabIndex={0}
-              draggable
-              onDragStart={() => setDraggedSlideId(slide.id)}
-              onDragOver={(event) => event.preventDefault()}
-              onDrop={() => reorderSlide(slide.id)}
-              onDragEnd={() => setDraggedSlideId(null)}
-              onClick={() => setSelectedId(slide.id)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                  event.preventDefault()
-                  setSelectedId(slide.id)
-                }
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={selectedSlideIds.includes(slide.id)}
-                onChange={(event) => {
-                  event.stopPropagation()
-                  toggleSelectedSlide(slide.id)
-                }}
-                onClick={(event) => event.stopPropagation()}
-              />
-              <GripVertical className="drag-marker" size={16} />
-              <span>{index + 1}</span>
-              <strong>{slide.title || 'Без названия'}</strong>
-              {slide.poll && <QrCode className="thumb-poll-mark" size={16} />}
+        <div className={mobileSlideSelection ? 'slide-rail selection-mode' : 'slide-rail'}>
+          <button className="slide-delete-button" type="button" onClick={deleteSelectedSlides} disabled={!selectedSlideIds.length || selectedSlideIds.length >= presentation.slides.length} title="Удалить выбранные">
+            <Trash2 size={16} />
+            Удалить выбранные
+          </button>
+          <details className="mobile-slide-picker" open={openMenu === 'slides'} onToggle={(event) => setOpenMenu(event.currentTarget.open ? 'slides' : null)}>
+            <summary>
+              <span>{presentation.slides.findIndex((slide) => slide.id === selected?.id) + 1}. {selected?.title || 'Без названия'}</span>
+              <ChevronDown size={16} />
+            </summary>
+            <div className="mobile-slide-popover">
+              <button className="popover-close" type="button" onClick={closeMenus} title="Закрыть"><X size={16} /></button>
+              <div className="slides mobile-slides" ref={mobileSlideListRef}>
+                {presentation.slides.map((slide, index) => renderSlideThumb(slide, index, 'mobile'))}
+              </div>
             </div>
-          ))}
-        </div>
+          </details>
+          <button className="primary slide-add-button" type="button" onClick={addSlide} title="Добавить слайд">
+            <Plus size={17} />
+            Добавить слайд
+          </button>
+          <div className="slides desktop-slides" ref={slideListRef}>
+            {presentation.slides.map((slide, index) => renderSlideThumb(slide, index, 'desktop'))}
+          </div>
         </div>
       </aside>
 
@@ -1453,7 +1523,16 @@ function AdminView({
 
         {selected && (
           <div className="workbench">
-            <section className="canvas-wrap">
+            <section className="canvas-wrap" onTouchStart={startSlideTouch} onTouchEnd={endSlideTouch} onTouchCancel={clearLongTap}>
+              {mobileSlideSelection && selected && (
+                <label className="mobile-slide-check">
+                  <input
+                    type="checkbox"
+                    checked={selectedSlideIds.includes(selected.id)}
+                    onChange={() => toggleSelectedSlide(selected.id)}
+                  />
+                </label>
+              )}
               <SlideCanvas slide={selected} mode="edit" votes={{}} />
             </section>
             <aside className="properties">
