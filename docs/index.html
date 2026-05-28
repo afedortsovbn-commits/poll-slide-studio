@@ -10,5 +10,10 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      if (location.hostname.endsWith('github.io') && !location.pathname.includes('/docs/')) {
+        location.replace('./docs/' + location.search + location.hash)
+      }
+    </script>
   </body>
 </html>
