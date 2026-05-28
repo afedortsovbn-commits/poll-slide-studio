@@ -1117,15 +1117,15 @@ function AdminView({
         <ChevronDown className="summary-chevron" size={16} />
       </summary>
       <div className="presentation-popover">
-        <button className="popover-close" type="button" onClick={closeMenus} title="Р—Р°РєСЂС‹С‚СЊ"><X size={16} /></button>
-        <strong>РџСЂРµР·РµРЅС‚Р°С†РёРё</strong>
+        <button className="popover-close" type="button" onClick={closeMenus} title="Закрыть"><X size={16} /></button>
+        <strong>Презентации</strong>
         <div className="presentation-list">
           {availableRecords.map((record) => (
             <div className={record.id === activeRecord?.id ? 'presentation-row active' : 'presentation-row'} key={record.id}>
               <button type="button" onClick={() => setActivePresentationId(record.id)}>
                 {record.title}
               </button>
-              <button type="button" onClick={() => openEditPresentationDialog(record)} title="РќР°СЃС‚СЂРѕРёС‚СЊ РїСЂРµР·РµРЅС‚Р°С†РёСЋ">
+              <button type="button" onClick={() => openEditPresentationDialog(record)} title="Настроить презентацию">
                 <Pencil size={16} />
               </button>
             </div>
@@ -1133,7 +1133,7 @@ function AdminView({
         </div>
         <button type="button" onClick={openCreatePresentationDialog}>
           <Plus size={18} />
-          РЎРѕР·РґР°С‚СЊ РїСЂРµР·РµРЅС‚Р°С†РёСЋ
+          Создать презентацию
         </button>
       </div>
     </details>
@@ -1145,22 +1145,22 @@ function AdminView({
         <UserCircle size={18} />
       </summary>
       <div className="workspace-popover accounts-popover toolbar-popover">
-        <button className="popover-close" type="button" onClick={closeMenus} title="Р—Р°РєСЂС‹С‚СЊ"><X size={16} /></button>
-        <strong>{isOwner ? 'РЈРїСЂР°РІР»РµРЅРёРµ Р°РєРєР°СѓРЅС‚Р°РјРё' : user.email}</strong>
+        <button className="popover-close" type="button" onClick={closeMenus} title="Закрыть"><X size={16} /></button>
+        <strong>{isOwner ? 'Управление аккаунтами' : user.email}</strong>
         {isOwner && (
           <>
-          <input value={newUserEmail} onChange={(event) => setNewUserEmail(event.target.value)} placeholder="Р›РѕРіРёРЅ" />
-          <input type="password" value={newUserPassword} onChange={(event) => setNewUserPassword(event.target.value)} placeholder="РџР°СЂРѕР»СЊ" />
+          <input value={newUserEmail} onChange={(event) => setNewUserEmail(event.target.value)} placeholder="Логин" />
+          <input type="password" value={newUserPassword} onChange={(event) => setNewUserPassword(event.target.value)} placeholder="Пароль" />
           <button type="button" onClick={createUser}>
             <UserPlus size={18} />
-            РЎРѕР·РґР°С‚СЊ Р°РєРєР°СѓРЅС‚
+            Создать аккаунт
           </button>
           <div className="account-strip">
             {authStore.users.map((account, index) => (
               <span className="account-chip" key={account.email}>
                 {account.email}
                 {index > 0 && account.email !== user.email && (
-                  <button type="button" onClick={() => deleteUser(account.email)} title="РЈРґР°Р»РёС‚СЊ Р°РєРєР°СѓРЅС‚">
+                  <button type="button" onClick={() => deleteUser(account.email)} title="Удалить аккаунт">
                     <Trash2 size={14} />
                   </button>
                 )}
@@ -1171,7 +1171,7 @@ function AdminView({
         )}
         <button type="button" onClick={onSwitchAccount}>
           <Lock size={18} />
-          РЎРјРµРЅРёС‚СЊ Р°РєРєР°СѓРЅС‚
+          Сменить аккаунт
         </button>
       </div>
     </details>
@@ -1179,26 +1179,26 @@ function AdminView({
 
   const toolbarActions = (className = 'toolbar-actions') => (
     <div className={className}>
-      <div className="action-group" aria-label="РСЃС‚РѕСЂРёСЏ Рё СЃРѕС…СЂР°РЅРµРЅРёРµ">
-        <button type="button" onClick={undo} disabled={!canUndo} title="РћС‚РјРµРЅРёС‚СЊ">
+      <div className="action-group" aria-label="История и сохранение">
+        <button type="button" onClick={undo} disabled={!canUndo} title="Отменить">
           <ArrowLeft size={18} />
         </button>
         <button
           className={isDirty ? 'primary small-primary' : ''}
           type="button"
           onClick={() => void savePresentation(presentation)}
-          title={isDirty ? 'РЎРѕС…СЂР°РЅРёС‚СЊ РёР·РјРµРЅРµРЅРёСЏ' : 'РЎРѕС…СЂР°РЅРµРЅРѕ Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё'}
+          title={isDirty ? 'Сохранить изменения' : 'Сохранено автоматически'}
         >
           <Save size={18} />
         </button>
-        <button className="reset-action" type="button" onClick={() => resetVotes()} title="РћР±РЅСѓР»РёС‚СЊ РІСЃРµ РѕС‚РІРµС‚С‹">
+        <button className="reset-action" type="button" onClick={() => resetVotes()} title="Обнулить все ответы">
           <RotateCcw size={18} />
         </button>
       </div>
-      <button className="primary small-primary" type="button" onClick={() => void publishPresentation()} title="РћРїСѓР±Р»РёРєРѕРІР°С‚СЊ РґР»СЏ РґСЂСѓРіРёС… СѓСЃС‚СЂРѕР№СЃС‚РІ">
+      <button className="primary small-primary" type="button" onClick={() => void publishPresentation()} title="Опубликовать для других устройств">
         <Upload size={18} />
       </button>
-      <button className={audioName ? 'icon-on' : ''} type="button" onClick={() => audioInput.current?.click()} title={audioName ? 'Р—Р°РјРµРЅРёС‚СЊ С‚СЂРµРє' : 'Р”РѕР±Р°РІРёС‚СЊ С‚СЂРµРє'}>
+      <button className={audioName ? 'icon-on' : ''} type="button" onClick={() => audioInput.current?.click()} title={audioName ? 'Заменить трек' : 'Добавить трек'}>
         <Music size={18} />
       </button>
       <details className="action-menu align-right" open={openMenu === 'files'} onToggle={(event) => setOpenMenu(event.currentTarget.open ? 'files' : null)}>
@@ -1206,24 +1206,23 @@ function AdminView({
           <FolderInput size={18} />
         </summary>
         <div className="action-popover">
-          <button className="popover-close" type="button" onClick={closeMenus} title="Р—Р°РєСЂС‹С‚СЊ"><X size={16} /></button>
-          <button type="button" onClick={exportPresentation} title="Р­РєСЃРїРѕСЂС‚РёСЂРѕРІР°С‚СЊ РїСЂРµР·РµРЅС‚Р°С†РёСЋ РІ JSON-С„Р°Р№Р»">
+          <button className="popover-close" type="button" onClick={closeMenus} title="Закрыть"><X size={16} /></button>
+          <button type="button" onClick={exportPresentation} title="Экспортировать презентацию в JSON-файл">
             <Upload size={18} />
-            Р­РєСЃРїРѕСЂС‚ JSON
+            Экспорт JSON
           </button>
-          <button type="button" onClick={() => importInput.current?.click()} title="РРјРїРѕСЂС‚РёСЂРѕРІР°С‚СЊ РїСЂРµР·РµРЅС‚Р°С†РёСЋ РёР· JSON-С„Р°Р№Р»Р°">
+          <button type="button" onClick={() => importInput.current?.click()} title="Импортировать презентацию из JSON-файла">
             <Download size={18} />
-            РРјРїРѕСЂС‚ JSON
+            Импорт JSON
           </button>
-          <button type="button" onClick={() => void exportPowerPoint()} title="Р­РєСЃРїРѕСЂС‚РёСЂРѕРІР°С‚СЊ РїСЂРµР·РµРЅС‚Р°С†РёСЋ РІ PowerPoint">
+          <button type="button" onClick={() => void exportPowerPoint()} title="Экспортировать презентацию в PowerPoint">
             PPT
-            Р­РєСЃРїРѕСЂС‚ PowerPoint
+            Экспорт PowerPoint
           </button>
         </div>
       </details>
-      <a className="button-link" href={showHref} target="_blank" rel="noreferrer">
+      <a className="button-link" href={showHref} target="_blank" rel="noreferrer" title="Показ">
         <Eye size={18} />
-        РџРѕРєР°Р·
       </a>
     </div>
   )
@@ -1467,24 +1466,26 @@ function AdminView({
                   onChange={(event) => updateSlide(selected.id, (slide) => ({ ...slide, title: event.target.value }))}
                 />
               </label>
-              <label>
-                Переход
-                <select
-                  value={selected.transition}
-                  onChange={(event) =>
-                    updateSlide(selected.id, (slide) => ({ ...slide, transition: event.target.value as Transition }))
-                  }
-                >
-                  <option value="fade">Плавное появление</option>
-                  <option value="slide">Сдвиг</option>
-                  <option value="zoom">Приближение</option>
-                  <option value="none">Без эффекта</option>
-                </select>
-              </label>
-              <button type="button" onClick={() => fileInput.current?.click()}>
-                <ImagePlus size={18} />
-                Добавить изображение 1920x1080
-              </button>
+              <div className="transition-image-row">
+                <label>
+                  Переход
+                  <select
+                    value={selected.transition}
+                    onChange={(event) =>
+                      updateSlide(selected.id, (slide) => ({ ...slide, transition: event.target.value as Transition }))
+                    }
+                  >
+                    <option value="fade">Плавное появление</option>
+                    <option value="slide">Сдвиг</option>
+                    <option value="zoom">Приближение</option>
+                    <option value="none">Без эффекта</option>
+                  </select>
+                </label>
+                <button className="image-fhd-button" type="button" onClick={() => fileInput.current?.click()} title="Добавить изображение 1920x1080">
+                  <ImagePlus size={18} />
+                  FHD
+                </button>
+              </div>
               <input hidden ref={fileInput} type="file" accept="image/*" onChange={(event) => onImage(event.target.files?.[0])} />
               {selected.image && (
                 <button type="button" onClick={() => updateSlide(selected.id, (slide) => ({ ...slide, image: undefined }))}>

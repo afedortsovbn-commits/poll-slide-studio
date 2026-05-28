@@ -213,7 +213,7 @@ label {
 
 .mobile-context-row,
 .mobile-toolbar-actions {
-  display: none;
+  display: none !important;
 }
 
 .slide-rail {
@@ -228,6 +228,7 @@ label {
   gap: 8px;
   margin-top: 8px;
   overflow: auto;
+  scroll-behavior: smooth;
 }
 
 .thumb {
@@ -938,6 +939,20 @@ label {
   overflow-wrap: anywhere;
 }
 
+.transition-image-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 82px;
+  gap: 10px;
+  align-items: end;
+}
+
+.image-fhd-button {
+  min-width: 82px;
+  min-height: 42px;
+  padding: 8px 10px;
+  font-weight: 850;
+}
+
 .danger-zone {
   display: grid;
   gap: 9px;
@@ -1179,19 +1194,35 @@ label {
   }
 
   .mobile-context-row {
-    display: grid;
+    display: grid !important;
     grid-template-columns: 1fr 44px;
     gap: 8px;
+    position: relative;
   }
 
   .mobile-toolbar-actions {
-    display: flex;
+    display: flex !important;
     width: 100%;
     overflow-x: auto;
     flex-wrap: nowrap;
     justify-content: flex-start;
     gap: 6px;
     padding-bottom: 2px;
+  }
+
+  .mobile-toolbar-actions > button,
+  .mobile-toolbar-actions > a,
+  .mobile-toolbar-actions > details > summary,
+  .mobile-toolbar-actions .action-group button {
+    width: 42px;
+    min-width: 42px;
+    padding: 0;
+  }
+
+  .mobile-toolbar-actions .action-group {
+    flex: 0 0 auto;
+    gap: 5px;
+    padding-right: 0;
   }
 
   .editor > .toolbar {
@@ -1215,11 +1246,13 @@ label {
     min-height: 46px;
     width: 44px !important;
     padding: 0;
+    font-size: 0;
   }
 
-  .slide-add-button span,
-  .slide-delete-button span {
-    display: none;
+  .slide-add-button svg,
+  .slide-delete-button svg {
+    width: 19px;
+    height: 19px;
   }
 
   .slide-add-button {
@@ -1312,6 +1345,31 @@ label {
     width: auto;
     max-height: 72vh;
     overflow: auto;
+  }
+
+  .mobile-context-row .presentation-menu,
+  .mobile-context-row .workspace-menu {
+    position: relative;
+  }
+
+  .mobile-context-row .presentation-popover,
+  .mobile-context-row .workspace-popover,
+  .mobile-context-row .accounts-popover {
+    position: absolute;
+    top: calc(100% + 8px);
+    bottom: auto;
+    left: 0;
+    right: auto;
+    width: min(360px, calc(100vw - 20px));
+    max-height: 62vh;
+    overflow: auto;
+  }
+
+  .mobile-profile-menu .workspace-popover,
+  .mobile-profile-menu .accounts-popover {
+    left: auto;
+    right: 0;
+    width: min(320px, calc(100vw - 20px));
   }
 
   .publish-status {
