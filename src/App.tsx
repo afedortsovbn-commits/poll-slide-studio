@@ -620,6 +620,7 @@ function AdminView({
   const [editingPresentationId, setEditingPresentationId] = useState('')
   const [openMenu, setOpenMenu] = useState<string | null>(null)
   const [mobileSlideSelection, setMobileSlideSelection] = useState(false)
+  const [mobileSlideManage, setMobileSlideManage] = useState(false)
   const selected = presentation.slides.find((slide) => slide.id === selectedId) ?? presentation.slides[0]
   const fileInput = useRef<HTMLInputElement>(null)
   const audioInput = useRef<HTMLInputElement>(null)
@@ -628,11 +629,16 @@ function AdminView({
   const mobileSlideListRef = useRef<HTMLDivElement>(null)
   const slideTouchStartRef = useRef<{ x: number; y: number } | null>(null)
   const longTapRef = useRef<number | null>(null)
+  const thumbLongTapRef = useRef<number | null>(null)
   const loadedRecordId = useRef(activeRecord?.id ?? '')
   const isOwner = authStore.users[0]?.email === user.email
   const activeRecordId = activeRecord?.id ?? ''
   const canUndo = history.length > 0
   const closeMenus = () => setOpenMenu(null)
+  const closeAllMenus = () => {
+    setOpenMenu(null)
+    setMobileSlideManage(false)
+  }
   const isDirty = JSON.stringify(presentation) !== JSON.stringify(presentationBase)
 
   const scrollSlideIntoView = (slideId?: string) => {
@@ -653,13 +659,20 @@ function AdminView({
     }
   }
 
+  const clearThumbLongTap = () => {
+    if (thumbLongTapRef.current) {
+      window.clearTimeout(thumbLongTapRef.current)
+      thumbLongTapRef.current = null
+    }
+  }
+
   useEffect(() => {
     const closeOnPointer = (event: PointerEvent) => {
       if (!(event.target instanceof Element)) return
-      if (!event.target.closest('.presentation-menu, .workspace-menu, .action-menu, .mobile-slide-picker, .presentation-dialog')) closeMenus()
+      if (!event.target.closest('.presentation-menu, .workspace-menu, .action-menu, .mobile-slide-picker, .presentation-dialog')) closeAllMenus()
     }
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') closeMenus()
+      if (event.key === 'Escape') closeAllMenus()
     }
     document.addEventListener('pointerdown', closeOnPointer)
     document.addEventListener('keydown', closeOnEscape)
@@ -829,6 +842,7 @@ function AdminView({
     setNewPresentationEditors([user.email])
     setEditingPresentationId('')
     setPresentationDialog('create')
+    closeMenus()
   }
 
   const openEditPresentationDialog = (record: PresentationRecord) => {
@@ -836,6 +850,7 @@ function AdminView({
     setNewPresentationEditors(record.editorEmails.length ? record.editorEmails : [record.ownerEmail])
     setEditingPresentationId(record.id)
     setPresentationDialog('edit')
+    closeMenus()
   }
 
   const createPresentationRecord = () => {
@@ -994,7 +1009,8 @@ function AdminView({
     const slides = presentation.slides.filter((slide) => slide.id !== slideId)
     if (!slides.length) return
     setPresentation({ ...presentation, slides })
-    setSelectedId(slides[0].id)
+    setSelectedSlideIds((items) => items.filter((id) => id !== slideId))
+    setSelectedId(slides.find((slide) => slide.id === selectedId)?.id ?? slides[0].id)
   }
 
   const deleteSelectedSlides = () => {
@@ -1008,6 +1024,14 @@ function AdminView({
 
   const toggleSelectedSlide = (slideId: string) => {
     setSelectedSlideIds((ids) => (ids.includes(slideId) ? ids.filter((id) => id !== slideId) : [...ids, slideId]))
+  }
+
+  const startMobileThumbLongTap = (slideId: string) => {
+    clearThumbLongTap()
+    thumbLongTapRef.current = window.setTimeout(() => {
+      setMobileSlideManage(true)
+      setSelectedId(slideId)
+    }, 460)
   }
 
   const onImage = (file?: File) => {
@@ -1043,6 +1067,7 @@ function AdminView({
     if (!draggedSlideId || draggedSlideId === targetId) return
     const from = presentation.slides.findIndex((slide) => slide.id === draggedSlideId)
     const to = presentation.slides.findIndex((slide) => slide.id === targetId)
+    if (from < 0 || to < 0) return
     setPresentation({ ...presentation, slides: moveItem(presentation.slides, from, to) })
   }
 
@@ -1281,19 +1306,24 @@ function AdminView({
       className={[
         slide.id === selected?.id ? 'thumb active' : 'thumb',
         mobileSlideSelection ? 'selection-mode' : '',
+        mode === 'mobile' && mobileSlideManage ? 'manage-mode' : '',
       ].filter(Boolean).join(' ')}
       key={`${mode}-${slide.id}`}
       data-slide-id={slide.id}
       role="button"
       tabIndex={0}
-      draggable
+      draggable={mode === 'desktop' || mobileSlideManage}
+      onTouchStart={() => mode === 'mobile' && startMobileThumbLongTap(slide.id)}
+      onTouchMove={clearThumbLongTap}
+      onTouchEnd={clearThumbLongTap}
+      onTouchCancel={clearThumbLongTap}
       onDragStart={() => setDraggedSlideId(slide.id)}
       onDragOver={(event) => event.preventDefault()}
       onDrop={() => reorderSlide(slide.id)}
       onDragEnd={() => setDraggedSlideId(null)}
       onClick={() => {
         setSelectedId(slide.id)
-        if (mode === 'mobile') setOpenMenu(null)
+        if (mode === 'mobile' && !mobileSlideManage) setOpenMenu(null)
       }}
       onKeyDown={(event) => {
         if (event.key === 'Enter' || event.key === ' ') {
@@ -1316,6 +1346,20 @@ function AdminView({
       <span>{index + 1}</span>
       <strong>{slide.title || 'Без названия'}</strong>
       {slide.poll && <QrCode className="thumb-poll-mark" size={16} />}
+      {mode === 'mobile' && mobileSlideManage && (
+        <button
+          className="mobile-slide-delete"
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation()
+            deleteSlide(slide.id)
+          }}
+          disabled={presentation.slides.length < 2}
+          title="Удалить слайд"
+        >
+          <Trash2 size={15} />
+        </button>
+      )}
     </div>
   )
 
@@ -1345,7 +1389,15 @@ function AdminView({
               <ChevronDown size={16} />
             </summary>
             <div className="mobile-slide-popover">
-              <button className="popover-close" type="button" onClick={closeMenus} title="Закрыть"><X size={16} /></button>
+              <div className="mobile-slide-popover-head">
+                <strong>{mobileSlideManage ? 'Управление слайдами' : 'Слайды'}</strong>
+                {mobileSlideManage && (
+                  <button type="button" onClick={() => setMobileSlideManage(false)}>
+                    Готово
+                  </button>
+                )}
+                <button className="popover-close" type="button" onClick={closeMenus} title="Закрыть"><X size={16} /></button>
+              </div>
               <div className="slides mobile-slides" ref={mobileSlideListRef}>
                 {presentation.slides.map((slide, index) => renderSlideThumb(slide, index, 'mobile'))}
               </div>
