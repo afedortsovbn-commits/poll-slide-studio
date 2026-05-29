@@ -630,6 +630,8 @@ function AdminView({
   const slideTouchStartRef = useRef<{ x: number; y: number } | null>(null)
   const longTapRef = useRef<number | null>(null)
   const thumbLongTapRef = useRef<number | null>(null)
+  const mobileDraggedSlideId = useRef<string | null>(null)
+  const mobileDragLastTargetId = useRef<string | null>(null)
   const loadedRecordId = useRef(activeRecord?.id ?? '')
   const isOwner = authStore.users[0]?.email === user.email
   const activeRecordId = activeRecord?.id ?? ''
@@ -664,6 +666,12 @@ function AdminView({
       window.clearTimeout(thumbLongTapRef.current)
       thumbLongTapRef.current = null
     }
+  }
+
+  const clearMobileSlideDrag = () => {
+    clearThumbLongTap()
+    mobileDraggedSlideId.current = null
+    mobileDragLastTargetId.current = null
   }
 
   useEffect(() => {
@@ -1031,7 +1039,46 @@ function AdminView({
     thumbLongTapRef.current = window.setTimeout(() => {
       setMobileSlideManage(true)
       setSelectedId(slideId)
+      mobileDraggedSlideId.current = slideId
+      mobileDragLastTargetId.current = slideId
     }, 460)
+  }
+
+  const reorderMobileSlide = (sourceId: string, targetId: string) => {
+    if (sourceId === targetId) return
+    const from = presentation.slides.findIndex((slide) => slide.id === sourceId)
+    const to = presentation.slides.findIndex((slide) => slide.id === targetId)
+    if (from < 0 || to < 0) return
+    setPresentation({ ...presentation, slides: moveItem(presentation.slides, from, to) })
+  }
+
+  const startMobileThumbTouch = (event: TouchEvent<HTMLElement>, slideId: string) => {
+    event.stopPropagation()
+    setSelectedId(slideId)
+    if (mobileSlideManage) {
+      mobileDraggedSlideId.current = slideId
+      mobileDragLastTargetId.current = slideId
+      return
+    }
+    startMobileThumbLongTap(slideId)
+  }
+
+  const moveMobileThumbTouch = (event: TouchEvent<HTMLElement>) => {
+    if (!mobileDraggedSlideId.current) {
+      clearThumbLongTap()
+      return
+    }
+    event.preventDefault()
+    event.stopPropagation()
+    const touch = event.changedTouches[0]
+    if (!touch) return
+    const target = document
+      .elementFromPoint(touch.clientX, touch.clientY)
+      ?.closest<HTMLElement>('[data-slide-id]')
+    const targetId = target?.dataset.slideId
+    if (!targetId || targetId === mobileDragLastTargetId.current || targetId === mobileDraggedSlideId.current) return
+    reorderMobileSlide(mobileDraggedSlideId.current, targetId)
+    mobileDragLastTargetId.current = targetId
   }
 
   const onImage = (file?: File) => {
@@ -1273,6 +1320,7 @@ function AdminView({
       <details className="action-menu align-right mobile-extra-menu" open={openMenu === 'mobile-extra'} onToggle={(event) => setOpenMenu(event.currentTarget.open ? 'mobile-extra' : null)}>
         <summary>
           <MoreHorizontal size={18} />
+          <span>Дополнительно</span>
         </summary>
         <div className="action-popover">
           <button className="popover-close" type="button" onClick={closeMenus} title="Закрыть"><X size={16} /></button>
@@ -1313,10 +1361,10 @@ function AdminView({
       role="button"
       tabIndex={0}
       draggable={mode === 'desktop' || mobileSlideManage}
-      onTouchStart={() => mode === 'mobile' && startMobileThumbLongTap(slide.id)}
-      onTouchMove={clearThumbLongTap}
-      onTouchEnd={clearThumbLongTap}
-      onTouchCancel={clearThumbLongTap}
+      onTouchStart={(event) => mode === 'mobile' && startMobileThumbTouch(event, slide.id)}
+      onTouchMove={(event) => mode === 'mobile' && moveMobileThumbTouch(event)}
+      onTouchEnd={mode === 'mobile' ? clearMobileSlideDrag : undefined}
+      onTouchCancel={mode === 'mobile' ? clearMobileSlideDrag : undefined}
       onDragStart={() => setDraggedSlideId(slide.id)}
       onDragOver={(event) => event.preventDefault()}
       onDrop={() => reorderSlide(slide.id)}
