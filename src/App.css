@@ -1229,7 +1229,7 @@ label {
 
   .mobile-toolbar-actions {
     display: grid !important;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     width: 100%;
     overflow: visible;
     gap: 6px;
@@ -1250,29 +1250,28 @@ label {
   }
 
   .mobile-extra-menu {
-    grid-column: 1 / -1;
     position: relative;
   }
 
   .mobile-extra-menu summary {
     width: 100%;
-    color: #124c3f;
-    background: transparent;
-    border-style: dashed;
+    color: #0f463a;
+    background: #e8f3ee;
+    border-style: solid;
     font-weight: 850;
-    text-decoration: underline;
-    text-underline-offset: 3px;
+    text-decoration: none;
   }
 
   .mobile-extra-menu .action-popover {
     position: absolute;
     top: calc(100% + 8px);
-    right: 0;
+    right: auto;
     bottom: auto;
-    left: auto;
-    width: min(270px, calc(100vw - 20px));
+    left: 50%;
+    width: min(330px, calc(100vw - 20px));
+    transform: translateX(-50%);
     max-height: 58vh;
-    z-index: 120;
+    z-index: 130;
   }
 
   .editor > .toolbar {
@@ -1293,11 +1292,14 @@ label {
 
   .slide-add-button,
   .slide-delete-button {
-    display: none;
     min-height: 46px;
     width: 44px !important;
     padding: 0;
     font-size: 0;
+  }
+
+  .slide-delete-button {
+    display: none;
   }
 
   .slide-add-button svg,
@@ -1350,9 +1352,11 @@ label {
   .mobile-slide-popover {
     position: absolute;
     top: calc(100% + 8px);
-    left: -52px;
-    right: -52px;
-    z-index: 115;
+    left: 50%;
+    right: auto;
+    width: calc(100vw - 20px);
+    transform: translateX(-50%);
+    z-index: 125;
     display: grid;
     gap: 8px;
     max-height: min(62vh, 460px);

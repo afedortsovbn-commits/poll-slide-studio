@@ -1320,7 +1320,7 @@ function AdminView({
       <details className="action-menu align-right mobile-extra-menu" open={openMenu === 'mobile-extra'} onToggle={(event) => setOpenMenu(event.currentTarget.open ? 'mobile-extra' : null)}>
         <summary>
           <MoreHorizontal size={18} />
-          <span>Дополнительно</span>
+          <span>Еще</span>
         </summary>
         <div className="action-popover">
           <button className="popover-close" type="button" onClick={closeMenus} title="Закрыть"><X size={16} /></button>
