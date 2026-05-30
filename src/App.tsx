@@ -1618,8 +1618,12 @@ function AdminView({
             </div>
           </div>
         )}
-        {saveStatus && <div className="publish-status save-status">{saveStatus}</div>}
-        {publishStatus && <div className="publish-status">{publishStatus}</div>}
+        {(saveStatus || publishStatus) && (
+          <div className="status-stack" role="status" aria-live="polite">
+            {saveStatus && <div className="publish-status save-status">{saveStatus}</div>}
+            {publishStatus && <div className="publish-status">{publishStatus}</div>}
+          </div>
+        )}
 
         {selected && (
           <div className="workbench">
