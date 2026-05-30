@@ -1289,12 +1289,12 @@ label {
   }
 
   .mobile-extra-menu .action-popover {
-    position: fixed;
-    top: min(32vh, 250px);
-    right: 12px;
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
     bottom: auto;
-    left: 12px;
-    width: auto;
+    left: auto;
+    width: min(330px, calc(100vw - 20px));
     transform: none;
     max-height: 62vh;
     z-index: 2000;
@@ -1376,12 +1376,12 @@ label {
   }
 
   .mobile-slide-popover {
-    position: fixed;
-    top: min(40vh, 360px);
-    left: 10px;
-    right: 10px;
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
     width: auto;
-    max-width: calc(100vw - 20px);
+    max-width: 100%;
     box-sizing: border-box;
     transform: none;
     z-index: 1900;
