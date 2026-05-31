@@ -1,4 +1,4 @@
-import { type CSSProperties, type TouchEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { type CSSProperties, type SyntheticEvent, type TouchEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
 import {
   Send,
@@ -640,6 +640,20 @@ function AdminView({
   const closeAllMenus = () => {
     setOpenMenu(null)
     setMobileSlideManage(false)
+  }
+  const toggleMobileExtraMenu = (event: SyntheticEvent<HTMLDetailsElement>) => {
+    const details = event.currentTarget
+    setOpenMenu(details.open ? 'mobile-extra' : null)
+    if (!details.open) return
+
+    const summary = details.querySelector('summary')
+    if (!summary) return
+    const rect = summary.getBoundingClientRect()
+    const width = Math.min(330, window.innerWidth - 20)
+    const left = Math.min(Math.max(10, rect.right - width), window.innerWidth - width - 10)
+    details.style.setProperty('--mobile-extra-top', `${rect.bottom + 6}px`)
+    details.style.setProperty('--mobile-extra-left', `${left}px`)
+    details.style.setProperty('--mobile-extra-width', `${width}px`)
   }
   const isDirty = JSON.stringify(presentation) !== JSON.stringify(presentationBase)
 
@@ -1317,7 +1331,7 @@ function AdminView({
       <a className="button-link" href={showHref} target="_blank" rel="noreferrer" title="Показ">
         <Eye size={18} />
       </a>
-      <details className="action-menu align-right mobile-extra-menu" open={openMenu === 'mobile-extra'} onToggle={(event) => setOpenMenu(event.currentTarget.open ? 'mobile-extra' : null)}>
+      <details className="action-menu align-right mobile-extra-menu" open={openMenu === 'mobile-extra'} onToggle={toggleMobileExtraMenu}>
         <summary>
           <MoreHorizontal size={18} />
           <span>Еще</span>

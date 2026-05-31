@@ -1289,15 +1289,15 @@ label {
   }
 
   .mobile-extra-menu .action-popover {
-    position: absolute;
-    top: calc(100% + 6px);
-    right: 0;
+    position: fixed;
+    top: var(--mobile-extra-top, 180px);
+    right: auto;
     bottom: auto;
-    left: auto;
-    width: min(330px, calc(100vw - 20px));
+    left: var(--mobile-extra-left, 10px);
+    width: var(--mobile-extra-width, min(330px, calc(100vw - 20px)));
     transform: none;
     max-height: 62vh;
-    z-index: 2000;
+    z-index: 10000;
   }
 
   .editor > .toolbar {
