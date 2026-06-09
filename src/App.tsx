@@ -141,6 +141,7 @@ const VOTES_KEY = 'poll-slide-studio.votes'
 const OPEN_POLLS_KEY = 'poll-slide-studio.open-polls'
 const SAMPLE_POLL_SLIDE_ID = 'sample-poll-slide'
 const DEFAULT_USER_ID = 'default'
+let presentationCacheLimited = false
 
 const createId = () => crypto.randomUUID()
 
@@ -248,10 +249,17 @@ const readPresentationRecords = (email: string): PresentationRecord[] => {
 }
 
 const writePresentationRecords = (records: PresentationRecord[]) => {
-  return writeJson(PRESENTATION_RECORDS_KEY, records)
+  if (!presentationCacheLimited && writeJson(PRESENTATION_RECORDS_KEY, records)) return true
+  presentationCacheLimited = true
+  const lightweightRecords = records.map((record) => ({
+    ...record,
+    presentation: { ...starterPresentation(), title: record.title },
+  }))
+  return writeJson(PRESENTATION_RECORDS_KEY, lightweightRecords)
 }
 
-const readAllPresentationRecords = () => readJson<PresentationRecord[]>(PRESENTATION_RECORDS_KEY, [])
+const readAllPresentationRecords = () =>
+  presentationCacheLimited ? [] : readJson<PresentationRecord[]>(PRESENTATION_RECORDS_KEY, [])
 
 const toPresentationRecordMeta = ({ id, title, ownerEmail, editorEmails }: PresentationRecord): PresentationRecordMeta => ({
   id,
@@ -709,6 +717,44 @@ function AdminView({
   }, [selectedId])
 
   useEffect(() => {
+    if (!saveStatus) return undefined
+    const timeout = window.setTimeout(() => setSaveStatus(''), 3500)
+    return () => window.clearTimeout(timeout)
+  }, [saveStatus])
+
+  useEffect(() => {
+    if (!publishStatus) return undefined
+    const timeout = window.setTimeout(() => setPublishStatus(''), 3500)
+    return () => window.clearTimeout(timeout)
+  }, [publishStatus])
+
+  useEffect(() => {
+    const onSlideArrow = (event: KeyboardEvent) => {
+      if (!['ArrowDown', 'ArrowUp'].includes(event.key) || presentationDialog || openMenu) return
+      const target = event.target
+      if (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement ||
+        (target instanceof HTMLElement && target.isContentEditable)
+      ) return
+
+      const currentIndex = presentation.slides.findIndex((slide) => slide.id === selected?.id)
+      if (currentIndex < 0) return
+      const nextIndex = event.key === 'ArrowDown'
+        ? Math.min(currentIndex + 1, presentation.slides.length - 1)
+        : Math.max(currentIndex - 1, 0)
+      if (nextIndex === currentIndex) return
+      event.preventDefault()
+      const nextId = presentation.slides[nextIndex]?.id
+      setSelectedId(nextId)
+      scrollSlideIntoView(nextId)
+    }
+    window.addEventListener('keydown', onSlideArrow)
+    return () => window.removeEventListener('keydown', onSlideArrow)
+  }, [openMenu, presentation.slides, presentationDialog, selected?.id])
+
+  useEffect(() => {
     if (!firebaseEnabled) return
     let cancelled = false
     void readRemotePresentationRecords<PresentationRecordMeta[]>([])
@@ -797,29 +843,21 @@ function AdminView({
     if (remember) setHistory((items) => [presentation, ...items].slice(0, 3))
     setPresentationState(next)
     setPresentationBase(next)
-    const savedLocally = persistActivePresentation(next)
-    if (!savedLocally) {
-      setSaveStatus('Локальный кэш переполнен. Нажмите «Сохранить», чтобы записать изменения в базу.')
-    }
+    persistActivePresentation(next)
   }
 
   const savePresentation = async (next: Presentation) => {
     setPresentationState(next)
     setPresentationBase(next)
-    const savedLocally = persistActivePresentation(next)
-    setSaveStatus(savedLocally ? 'Сохраняем в базу...' : 'Локальный кэш переполнен. Сохраняем в базу...')
+    persistActivePresentation(next)
+    setSaveStatus('Сохраняем в базу...')
     const savedRemotely = firebaseEnabled ? await saveRemotePresentation(next, scope) : true
     setSaveStatus(
       savedRemotely
-        ? savedLocally
-          ? 'Сохранено'
-          : 'Сохранено в базе. Локальный кэш браузера переполнен.'
+        ? 'Сохранено в базе'
         : 'Не удалось сохранить в базу. Проверьте подключение и правила Realtime Database.',
     )
-    window.setTimeout(() => {
-      setSaveStatus((current) => (current === 'Сохранено' ? '' : current))
-    }, 2500)
-    return savedLocally && savedRemotely
+    return savedRemotely
   }
 
   const undo = () => {
@@ -1234,6 +1272,7 @@ function AdminView({
   const publishPresentation = async () => {
     const nextPresentation = { ...presentation, title: presentation.title || activeRecord?.title || '' }
     await savePresentation(nextPresentation)
+    setSaveStatus('')
     setPublishStatus('Публикуем презентацию...')
     const saved = await saveRemotePresentation(nextPresentation, scope)
     setPublishStatus(
@@ -1600,18 +1639,25 @@ function AdminView({
             <div className="presentation-dialog-panel">
               <strong>{presentationDialog === 'create' ? 'Новая презентация' : 'Настройка презентации'}</strong>
               <input value={newPresentationTitle} onChange={(event) => setNewPresentationTitle(event.target.value)} placeholder="Название" />
-              <div className="access-list compact">
-                {authStore.users.map((account) => (
-                  <label className="checkbox-row" key={account.email}>
-                    <input
-                      type="checkbox"
-                      checked={newPresentationEditors.includes(account.email)}
-                      onChange={() => togglePresentationEditor(account.email)}
-                    />
-                    {account.email}
-                  </label>
-                ))}
-              </div>
+              <details className="access-picker">
+                <summary>
+                  <span>Доступ к редактированию</span>
+                  <span>{newPresentationEditors.length} выбрано</span>
+                  <ChevronDown size={16} />
+                </summary>
+                <div className="access-list compact">
+                  {authStore.users.map((account) => (
+                    <label className="checkbox-row" key={account.email}>
+                      <input
+                        type="checkbox"
+                        checked={newPresentationEditors.includes(account.email)}
+                        onChange={() => togglePresentationEditor(account.email)}
+                      />
+                      {account.email}
+                    </label>
+                  ))}
+                </div>
+              </details>
               <div className="dialog-actions">
                 {presentationDialog === 'edit' && (
                   <button
